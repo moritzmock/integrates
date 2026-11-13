@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Callable, Sequence
 
 
-TEAM_NAME = "Starter example"
+TEAM_NAME = "Calibra"
 ALGORITHM_NAME = "Baseline passthrough"
 
 
