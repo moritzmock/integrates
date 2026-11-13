@@ -1,0 +1,31 @@
+name: Sync backend to team-17
+
+on:
+  schedule:
+    - cron: '8-59/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-team-17
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Sync committed files over HTTPS
+        env:
+          HACKATHON_USERNAME: ${{ secrets.HACKATHON_USERNAME }}
+          HACKATHON_TOKEN: ${{ secrets.HACKATHON_TOKEN }}
+          SYNC_SUBDIRECTORY: backend
+        run: bash .github/scripts/sync-team-17.sh
