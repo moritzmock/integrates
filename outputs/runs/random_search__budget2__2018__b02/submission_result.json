@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.2",
+  "team_name": "Calibra",
+  "algorithm_name": "random_search",
+  "calibration_py_sha256": "691d945970ce62a6cef2c187ccaca4da95c1502dcf13fab0d43194b0d16efc87",
+  "backend": "pbe",
+  "evaluation_budget_per_building": 2,
+  "seed": 2026,
+  "overall_score": 57.556759462869394,
+  "building_results": [
+    {
+      "building_id": "building_02",
+      "baseline_score": 0.0,
+      "calibrated_score": 57.556759462869394,
+      "improvement_points": 57.556759462869394,
+      "baseline_mean_absolute_percentage_error": 150.35955039593887,
+      "baseline_mean_signed_percentage_error": 150.35955039593887,
+      "baseline_root_mean_squared_error_kwh": 114852.63531545064,
+      "baseline_mean_absolute_error_kwh": 114847.94034692398,
+      "baseline_weighted_absolute_percentage_error": 149.11349605458736,
+      "baseline_cv_rmse_pct": 149.11959179447405,
+      "baseline_nmbe_pct": 149.11349605458736,
+      "baseline_compared_months": 2,
+      "calibrated_mean_absolute_percentage_error": 42.790611188300474,
+      "calibrated_mean_signed_percentage_error": 42.790611188300474,
+      "calibrated_root_mean_squared_error_kwh": 32690.807801306117,
+      "calibrated_mean_absolute_error_kwh": 32689.990418801935,
+      "calibrated_weighted_absolute_percentage_error": 42.443240537130606,
+      "calibrated_cv_rmse_pct": 42.4443017904926,
+      "calibrated_nmbe_pct": 42.443240537130606,
+      "calibrated_compared_months": 2,
+      "team_name": "Calibra",
+      "algorithm_name": "random_search",
+      "evaluations": 2,
+      "runtime_seconds": 40.6709486999971,
+      "status": "ok"
+    }
+  ],
+  "active_parameter_names": [
+    "weekday_heating_hours",
+    "non_workday_heating_hours",
+    "weekday_start_hour",
+    "occupied_heating_setpoint_c",
+    "night_setback_temperature_c",
+    "outdoor_shutdown_temperature_c",
+    "normally_heated_area_fraction",
+    "reduced_area_setpoint_c",
+    "reduced_area_schedule_fraction",
+    "air_exchange_multiplier",
+    "opaque_envelope_u_value_multiplier",
+    "window_u_value_multiplier"
+  ],
+  "active_parameter_selection": {
+    "weekday_heating_hours": 8.0,
+    "non_workday_heating_hours": 2.0,
+    "weekday_start_hour": 7.0,
+    "occupied_heating_setpoint_c": 20.0,
+    "night_setback_temperature_c": 15.0,
+    "outdoor_shutdown_temperature_c": 15.0,
+    "normally_heated_area_fraction": 0.8,
+    "reduced_area_setpoint_c": 15.0,
+    "reduced_area_schedule_fraction": 0.5,
+    "air_exchange_multiplier": 1.0,
+    "opaque_envelope_u_value_multiplier": 1.0,
+    "window_u_value_multiplier": 1.0
+  },
+  "parameters": {
+    "building_02": {
+      "weekday_heating_hours": 4.064043683246138,
+      "non_workday_heating_hours": 1.5435302035403389,
+      "weekday_start_hour": 5.330082462434547,
+      "occupied_heating_setpoint_c": 19.993704757288285,
+      "night_setback_temperature_c": 14.692473800738547,
+      "outdoor_shutdown_temperature_c": 16.23257006055197,
+      "normally_heated_area_fraction": 0.7191153948801979,
+      "reduced_area_setpoint_c": 15.106323452810997,
+      "reduced_area_schedule_fraction": 0.5304511715082239,
+      "air_exchange_multiplier": 0.7539086498939785,
+      "opaque_envelope_u_value_multiplier": 0.9017881368163062,
+      "window_u_value_multiplier": 0.9764560946982372
+    }
+  }
+}
