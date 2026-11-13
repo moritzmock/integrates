@@ -18,12 +18,13 @@
 #SBATCH --mem=16G
 #SBATCH --time=04:00:00
 #SBATCH --output=outputs/slurm/%x_%A_%a.out
+#SBATCH --partition=cpu
+#SBATCH --account=mtdlop
 
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR}"
 
-source "$(conda info --base)/etc/profile.d/conda.sh"
-conda activate integrates_hackathon
+source .venv/bin/activate
 
 python experiments.py run \
     --settings "${SETTINGS:-experiments.json}" \

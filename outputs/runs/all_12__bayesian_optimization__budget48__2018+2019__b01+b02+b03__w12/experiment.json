@@ -1,0 +1,162 @@
+{
+  "schema_version": 2,
+  "run_id": "all_12__bayesian_optimization__budget48__2018+2019__b01+b02+b03__w12",
+  "name": "all_12",
+  "created_utc": "2026-11-13T22:40:17+00:00",
+  "host": "hpcamd01",
+  "settings": {
+    "algorithm": "bayesian_optimization",
+    "buildings": [
+      "building_01",
+      "building_02",
+      "building_03"
+    ],
+    "calibration_years": [
+      2018,
+      2019
+    ],
+    "evaluation_budget": 48,
+    "parallel_workers": 12,
+    "seed": 2026,
+    "parameters": {
+      "weekday_heating_hours": 8.0,
+      "non_workday_heating_hours": 2.0,
+      "weekday_start_hour": 7.0,
+      "occupied_heating_setpoint_c": 20.0,
+      "night_setback_temperature_c": 15.0,
+      "outdoor_shutdown_temperature_c": 15.0,
+      "normally_heated_area_fraction": 0.8,
+      "reduced_area_setpoint_c": 15.0,
+      "reduced_area_schedule_fraction": 0.5,
+      "air_exchange_multiplier": 1.0,
+      "opaque_envelope_u_value_multiplier": 1.0,
+      "window_u_value_multiplier": 1.0
+    }
+  },
+  "organizer": {
+    "input_signature": "b18df09c1d13b195db4c4da484ce3fb2bb3cb6e790c108f4dd78de03b26c35e5",
+    "pybuildingenergy": "2.1.0"
+  },
+  "environment": {
+    "python": "3.11.16",
+    "packages": {
+      "numpy": "2.4.6",
+      "scipy": "1.17.1",
+      "scikit-learn": "1.9.1"
+    }
+  },
+  "code": {
+    "fingerprint": "6ef74a1cc829a620dd5c443dfff2b628bc8fc658bb5ee07691f8844a3cb29faf",
+    "parts": {
+      "<__future__>": {
+        "kind": "module",
+        "hash": "295df243c6a33994"
+      },
+      "ALGORITHM_NAME": {
+        "kind": "selector",
+        "hash": "f271fb1caea07528"
+      },
+      "ConstantKernel": {
+        "kind": "import",
+        "hash": "c819e3508c4b48fc"
+      },
+      "ConvergenceWarning": {
+        "kind": "import",
+        "hash": "7bc13ffcd44bc3f4"
+      },
+      "GaussianProcessRegressor": {
+        "kind": "import",
+        "hash": "105c127b64dbe86c"
+      },
+      "Matern": {
+        "kind": "import",
+        "hash": "26558752aa65b138"
+      },
+      "WhiteKernel": {
+        "kind": "import",
+        "hash": "4d4a1ebc401063e5"
+      },
+      "_ALGORITHMS": {
+        "kind": "registry",
+        "hash": "334334c94f5003d5"
+      },
+      "_History": {
+        "kind": "class",
+        "hash": "a612228c8bdbe6c4"
+      },
+      "_MAX_STALLED_BATCHES": {
+        "kind": "assign",
+        "hash": "f731f352693a1f0a"
+      },
+      "_candidate_pool": {
+        "kind": "def",
+        "hash": "9815c32b0aa301f7"
+      },
+      "_expected_improvement": {
+        "kind": "def",
+        "hash": "17033c11b8f86ff0"
+      },
+      "_fit_gp": {
+        "kind": "def",
+        "hash": "e95edc08fa777af3"
+      },
+      "_propose_batch": {
+        "kind": "def",
+        "hash": "3a20d2d4372a50ee"
+      },
+      "bayesian_optimization": {
+        "kind": "def",
+        "hash": "40f0dc470c49ebca"
+      },
+      "calibrate": {
+        "kind": "def",
+        "hash": "92594b835257e799"
+      },
+      "norm": {
+        "kind": "import",
+        "hash": "5110c24ad031dba9"
+      },
+      "np": {
+        "kind": "import",
+        "hash": "6f11581db2b4487a"
+      },
+      "qmc": {
+        "kind": "import",
+        "hash": "c9362276fdd8449a"
+      },
+      "warnings": {
+        "kind": "import",
+        "hash": "e099fa46ef98e3cf"
+      }
+    },
+    "calibration_py_sha256": "ecd6d82ed0fecbd48baa919ec7ef1498fc1782a0f31dee22de88b854012cdcc4",
+    "snapshot_sha256": "ecd6d82ed0fecbd48baa919ec7ef1498fc1782a0f31dee22de88b854012cdcc4",
+    "equivalent": []
+  },
+  "probe": {
+    "signatures": {
+      "smooth": "bc898f2d726158dda6ede32df874b2b3",
+      "corner": "6e62a381e0af361de434de7c3e29a67a",
+      "degenerate": "09cbab95ac8d8a42f95afabff998cd0e"
+    },
+    "executed": [
+      "_History",
+      "_candidate_pool",
+      "_expected_improvement",
+      "_fit_gp",
+      "_propose_batch",
+      "bayesian_optimization",
+      "calibrate"
+    ],
+    "evaluations": 105
+  },
+  "result": {
+    "overall_score": 96.74874697853998,
+    "building_scores": {
+      "building_01": 95.68150409926207,
+      "building_02": 99.04339948820413,
+      "building_03": 95.52133734815375
+    },
+    "runtime_seconds": 209.3
+  }
+}
