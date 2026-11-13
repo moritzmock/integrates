@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "integrates-hackathon"
+version = "0.1.0"
+description = "Algorithm-neutral calibration challenge for building energy models."
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "numpy>=1.26",
+    "openpyxl>=3.1",
+    "pandas>=2.2",
+    "pybuildingenergy==2.1.0",
+]
+
+[project.optional-dependencies]
+notebook = ["ipykernel>=6.29", "jupyter>=1.0", "matplotlib>=3.8"]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+

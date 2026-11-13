@@ -1,0 +1,62 @@
+name: tests
+
+# Every run starts from a clean checkout and the pinned environment, which is
+# what participants get. It checks the unit tests, that a fresh
+# pyBuildingEnergy run reproduces the shipped baseline, and that the release
+# notebook runs top to bottom with the starter calibration.py.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: latest
+          environment-file: environment.yml
+          activate-environment: integrates_hackathon
+
+      - name: Show environment
+        run: |
+          python --version
+          python -m pip list
+
+      - name: Unit tests and baseline regression
+        env:
+          PYTHONPATH: src
+          INTEGRATES_SLOW_TESTS: "1"
+        run: python -m unittest discover -s tests -v
+
+      - name: Execute the release notebook with the starter submission
+        run: >
+          jupyter nbconvert --to notebook --execute
+          notebooks/hackathon_integrates.ipynb
+          --output-dir "$RUNNER_TEMP"
+          --ExecutePreprocessor.timeout=3000
+
+      - name: Upload exported results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: outputs-${{ matrix.os }}
+          path: outputs/
+          if-no-files-found: ignore

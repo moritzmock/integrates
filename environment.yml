@@ -1,0 +1,30 @@
+name: integrates_hackathon
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      # Exact versions used to generate data/precomputed_baseline.csv. They pin
+      # pyBuildingEnergy and every package it uses, so every team and the
+      # official verification run produce identical simulation results.
+      # Change them only together with a baseline regeneration.
+      - pybuildingenergy==2.1.0
+      - numpy==2.4.6
+      - pandas==3.0.6
+      - scipy==1.17.1
+      - pvlib==0.16.1
+      - holidays==0.107
+      - workalendar==17.0.0
+      - openpyxl==3.1.5
+      - python-dateutil==2.9.0.post0
+      - pytz==2026.5
+      - tzdata==2026.5
+      - scikit-learn==1.9.1
+      - timezonefinder==9.0.0
+      - matplotlib==3.11.2
+      - plotly==7.1.0
+      - pyecharts==2.1.0
+      - requests==2.34.2
+      - tqdm==4.70.1
+      - -e .[notebook,dev]

@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+.venv/
+.env
+.ipynb_checkpoints/
+build/
+dist/
+outputs/
+non_parallel_TO_MOVE/
+data/weather/*.epw
+data/private/
+tmp/
+*_previews/
+

@@ -1,0 +1,31 @@
+{
+  "backend": "pybuildingenergy",
+  "building_ids": [
+    "building_01",
+    "building_02",
+    "building_03"
+  ],
+  "generated_utc": "2026-11-11T16:45:49.545170+00:00",
+  "input_signature": "b18df09c1d13b195db4c4da484ce3fb2bb3cb6e790c108f4dd78de03b26c35e5",
+  "measurement_period_totals_kwh": {
+    "building_01": 159051.88432116254,
+    "building_02": 717839.1351581824,
+    "building_03": 1017045.1838883242
+  },
+  "package_versions": {
+    "holidays": "0.107",
+    "numpy": "2.4.6",
+    "openpyxl": "3.1.5",
+    "pandas": "3.0.6",
+    "pvlib": "0.16.1",
+    "pybuildingenergy": "2.1.0",
+    "python-dateutil": "2.9.0.post0",
+    "pytz": "2026.5",
+    "scipy": "1.17.1",
+    "tzdata": "2026.5",
+    "workalendar": "17.0.0"
+  },
+  "pybuildingenergy_version": "2.1.0",
+  "row_count": 12,
+  "schema_version": 1
+}
