@@ -139,7 +139,12 @@
     },
     "calibration_py_sha256": "aab99b9a8ef4f27760d7ef45080c7d2c3ed14c9dce91e0869b59f91f18462cdf",
     "snapshot_sha256": "e3aa2237bfcbda9e1e5ca0d5b1a4b5fda966b8dce02952f0ecd52128f035e707",
-    "equivalent": []
+    "equivalent": [
+      {
+        "fingerprint": "0897e2b00b4538ceb66bf61cb731ac40a9a309a474eb2ff0543732fb3fc3a8d5",
+        "verified_utc": "2026-11-14T04:03:56+00:00"
+      }
+    ]
   },
   "probe": {
     "signatures": {
