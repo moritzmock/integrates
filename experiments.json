@@ -60,7 +60,7 @@
       "algorithm": "ard_bayesian_optimisation",
       "parameters": "all",
       "constants": {
-        "ARD_RKN": [
+        "ARD_RNK": [
           1,
           0.75,
           0.5,

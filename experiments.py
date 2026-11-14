@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 """Run, save, and compare calibration experiments from a JSON settings file.
 
-This is the command-line counterpart of the challenge notebook. It drives the
-organizer workflow (simulation, budget enforcement, scoring, export) for every
-experiment in a settings file and never modifies ``calibration.py``.
+It drives the organizer workflow (simulation, budget enforcement, scoring,
+export) for every experiment in a settings file and never modifies
+``calibration.py`` or ``alternative_algorithms.py``. The challenge notebook
+uses the same code through the functions in the "Notebook interface" section,
+so saved results are shared between the two.
 
 Commands
 --------
@@ -41,21 +43,25 @@ lists; every combination becomes one experiment. ``parameters`` is ``"all"``
 (all twelve active, starting at the organizer defaults), a list of names, or
 an object ``{name: start value or null}``.
 
-``constants`` tunes module-level numeric constants of ``calibration.py``, e.g.
-``{"UCB_KAPPA": [1, 2, 4], "LASSO_ALPHA": 0.03}``. Each value may be a list;
-every combination becomes one experiment. An entry's ``constants`` are merged
-over those in ``defaults``. A constant must be assigned exactly once at module
-level to a number, and must be used by the experiment's algorithm. The folder
-name gets one ``<initials><value>`` part per constant (``ucb_kappa`` -> ``uk2``).
-Experiments without constants run the file's own values.
+``constants`` tunes module-level numeric constants of the algorithm's file,
+e.g. ``{"ARD_TOP_FRACTION": [0.25, 0.5, 0.75], "ARD_RNK": 0.5}``. Each value
+may be a list; every combination becomes one experiment. An entry's
+``constants`` are merged over those in ``defaults``. A constant must be
+assigned exactly once at module level to a number, and must be used by the
+experiment's algorithm. The folder name gets one ``<initials><value>`` part
+per constant (``ucb_kappa`` -> ``uk2``). Experiments without constants run the
+file's own values.
 
 How an algorithm is selected
 ----------------------------
-``calibration.py`` chooses its method with the module constant
-``ALGORITHM_NAME``. For each experiment the runner writes a copy of
-``calibration.py`` in which only that line (and the lines of any tuned
-``constants``) is changed and hands the copy to the organizer workflow. The copy used is stored with the result as
-``calibration_snapshot.py``.
+``calibration.py`` contains only the submitted method, named by its module
+constant ``ALGORITHM_NAME``. An experiment with that algorithm runs
+``calibration.py`` itself. Every other algorithm comes from
+``alternative_algorithms.py``. The organizer workflow accepts a single file,
+so for those the runner joins the two files into one (``combined_source``) and
+sets the ``ALGORITHM_NAME`` line in it. Tuned ``constants`` are set the same
+way, by changing only their lines. The file that actually ran is stored with
+the result as ``calibration_snapshot.py``.
 
 When is a saved result reused?
 ------------------------------
@@ -80,6 +86,13 @@ that (see ``analyse_source`` and ``run_probe``):
 
 ``--strict`` uses check 1 only. ``--force`` always reruns. A rerun moves the
 old result to ``outputs/runs/_superseded/`` instead of deleting it.
+
+From the notebook
+-----------------
+``load_or_run_calibration(context)`` replaces ``workflow.run_calibration`` and
+loads the saved result of the notebook's configuration if it is still valid.
+``save_calibration(...)`` files the notebook's export under ``outputs/runs/``,
+and ``compare(...)`` returns the tables and plots of the ``compare`` command.
 """
 
 from __future__ import annotations
@@ -110,7 +123,8 @@ if (REPO / "src").is_dir() and str(REPO / "src") not in sys.path:
     sys.path.insert(0, str(REPO / "src"))  # also runs in spawned worker processes
 os.environ.setdefault("MPLBACKEND", "Agg")  # servers have no display
 
-CALIBRATION_PATH = REPO / "calibration.py"
+CALIBRATION_PATH = REPO / "calibration.py"  # the submission
+ALTERNATIVES_PATH = REPO / "alternative_algorithms.py"  # every other method we tried
 DEFAULT_SETTINGS = REPO / "experiments.json"
 DEFAULT_RUNS_DIR = REPO / "outputs" / "runs"
 SELECTOR = "ALGORITHM_NAME"
@@ -581,13 +595,115 @@ def analyse_source(text: str, algorithm: str) -> CodeInfo:
     return CodeInfo(fingerprint, dict(sorted(parts.items())), line_index, modules, algorithms, current)
 
 
+def _bound_names(stmt) -> set[str]:
+    """Names a top-level def, class, or assignment binds."""
+
+    if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return {stmt.name}
+    if isinstance(stmt, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+        targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
+        return {node.id for target in targets for node in ast.walk(target) if isinstance(node, ast.Name)}
+    return set()
+
+
+def _imported(stmt) -> set[tuple]:
+    """(module, name, alias) of everything a top-level import statement imports."""
+
+    if isinstance(stmt, ast.Import):
+        return {("", alias.name, alias.asname) for alias in stmt.names}
+    if isinstance(stmt, ast.ImportFrom):
+        return {("." * stmt.level + (stmt.module or ""), alias.name, alias.asname) for alias in stmt.names}
+    return set()
+
+
+def _without(text: str, statements) -> str:
+    """``text`` without the lines of the given top-level statements."""
+
+    lines = text.splitlines(keepends=True)
+    for stmt in sorted(statements, key=lambda stmt: -stmt.lineno):
+        first = min([stmt.lineno, *(d.lineno for d in getattr(stmt, "decorator_list", []))])
+        del lines[first - 1 : stmt.end_lineno]
+    return "".join(lines)
+
+
+def combined_source(calibration: bytes, alternatives: bytes) -> bytes:
+    """Join calibration.py and alternative_algorithms.py into one self-contained file.
+
+    The organizer workflow loads a submission from a single file, and the
+    fingerprint and the behaviour probe below also look at one file. The
+    result is calibration.py followed by alternative_algorithms.py, minus what
+    would be defined twice:
+
+    - from calibration.py, every top-level definition that the alternatives
+      file defines again (``ALGORITHM_NAME`` and ``calibrate``);
+    - from the alternatives file, its docstring, its ``__future__`` import,
+      its ``from calibration import ...`` (those names are now in the same
+      file), and imports calibration.py already makes.
+
+    Nothing else is changed, so each remaining line is the line of one of the
+    two files.
+    """
+
+    main_text, extra_text = calibration.decode("utf-8"), alternatives.decode("utf-8")
+    main, extra = ast.parse(main_text), ast.parse(extra_text)
+    module = CALIBRATION_PATH.stem
+    for node in ast.walk(extra):
+        if isinstance(node, ast.Import) and any(alias.name.split(".")[0] == module for alias in node.names):
+            raise ExperimentError(
+                f"{ALTERNATIVES_PATH.name} must use 'from {module} import ...', not 'import {module}', "
+                "so that the two files can be joined"
+            )
+    redefined = set().union(*(_bound_names(stmt) for stmt in extra.body))
+    already_imported = set().union(*(_imported(stmt) for stmt in main.body))
+    drop_extra = [
+        stmt
+        for position, stmt in enumerate(extra.body)
+        if (position == 0 and _is_docstring(stmt))
+        or (isinstance(stmt, ast.ImportFrom) and stmt.level == 0 and stmt.module in ("__future__", module))
+        or (_imported(stmt) and _imported(stmt) <= already_imported)
+    ]
+    drop_main = [stmt for stmt in main.body if _bound_names(stmt) & redefined]
+    return (
+        _without(main_text, drop_main).rstrip()
+        + f"\n\n\n# ===== Below: {ALTERNATIVES_PATH.name}, joined by experiments.py =====\n\n"
+        + _without(extra_text, drop_extra).lstrip()
+    ).encode("utf-8")
+
+
+def submitted_algorithm() -> str:
+    """The ALGORITHM_NAME of calibration.py, i.e. the method that file contains."""
+
+    name = analyse_source(CALIBRATION_PATH.read_text(encoding="utf-8"), "").current_algorithm
+    if name is None:
+        raise ExperimentError(f'calibration.py must contain a module-level {SELECTOR} = "..." line')
+    return name
+
+
+def build_source(algorithm: str, constants=()) -> bytes:
+    """The single file that runs ``algorithm`` with the given tuned ``constants``.
+
+    For the submitted algorithm without tuned constants these are the exact
+    bytes of calibration.py, so that run uses (and records the hash of) the
+    file to be submitted.
+    """
+
+    source = CALIBRATION_PATH.read_bytes()
+    if algorithm != submitted_algorithm():
+        if not ALTERNATIVES_PATH.is_file():
+            raise ExperimentError(
+                f"calibration.py contains only {submitted_algorithm()!r}, and {ALTERNATIVES_PATH.name}, "
+                f"which should provide {algorithm!r}, does not exist"
+            )
+        source = combined_source(source, ALTERNATIVES_PATH.read_bytes())
+    return variant_source(source, algorithm, constants)
+
+
 def variant_source(original: bytes, algorithm: str, constants=()) -> bytes:
-    """Return calibration.py with the ALGORITHM_NAME line set to ``algorithm``.
+    """Return the source with the ALGORITHM_NAME line set to ``algorithm``.
 
     Each ``(NAME, value)`` in ``constants`` replaces the module-level
-    ``NAME = <number>`` line. If nothing needs to change the original bytes are
-    returned, so that run uses (and records the hash of) the exact file to be
-    submitted.
+    ``NAME = <number>`` line. If nothing needs to change the original bytes
+    are returned.
     """
 
     text = original.decode("utf-8")
@@ -596,7 +712,7 @@ def variant_source(original: bytes, algorithm: str, constants=()) -> bytes:
         pattern = re.compile(rf"^{SELECTOR}[ \t]*(?::[^=\r\n]+)?=[^\r\n]*", re.M)
         if len(pattern.findall(text)) != 1:
             raise ExperimentError(
-                f"calibration.py must contain exactly one module-level '{SELECTOR} = \"...\"' line "
+                f"the algorithm's file must contain exactly one module-level '{SELECTOR} = \"...\"' line "
                 "so the runner can select an algorithm"
             )
         text = pattern.sub(lambda _: f"{SELECTOR} = {json.dumps(algorithm)}", text)
@@ -606,13 +722,13 @@ def variant_source(original: bytes, algorithm: str, constants=()) -> bytes:
         if name not in current:
             raise ExperimentError(
                 f"constant {name} must be assigned exactly once at module level to a number "
-                f"in calibration.py (found: {sorted(current) or 'none'})"
+                f"in the file of algorithm {algorithm!r} (found: {sorted(current) or 'none'})"
             )
         if current[name] == value and type(current[name]) is type(value):
             continue
         pattern = re.compile(rf"^{name}[ \t]*(?::[^=\r\n]+)?=[^\r\n]*", re.M)
         if len(pattern.findall(text)) != 1:
-            raise ExperimentError(f"calibration.py must contain exactly one '{name} = ...' line at column 0")
+            raise ExperimentError(f"there must be exactly one '{name} = ...' line at column 0")
         text = pattern.sub(lambda _: f"{name} = {value!r}  # set by experiments.py", text)
     replaced = text.encode("utf-8")
     return original if replaced == original else replaced
@@ -822,13 +938,13 @@ class Candidate:
 
     def __init__(self, experiment: Experiment, work_dir: Path) -> None:
         self.experiment = experiment
-        original = CALIBRATION_PATH.read_bytes()
-        self.original_sha256 = hashlib.sha256(original).hexdigest()
-        self.source = variant_source(original, experiment.algorithm, experiment.constants)
+        self.original_sha256 = hashlib.sha256(CALIBRATION_PATH.read_bytes()).hexdigest()
+        self.source = build_source(experiment.algorithm, experiment.constants)
         self.code = analyse_source(self.source.decode("utf-8"), experiment.algorithm)
         if self.code.algorithms is not None and experiment.algorithm not in self.code.algorithms:
             raise ExperimentError(
-                f"Unknown algorithm {experiment.algorithm!r}; calibration.py registers {self.code.algorithms}"
+                f"Unknown algorithm {experiment.algorithm!r}; calibration.py contains {submitted_algorithm()!r} "
+                f"and {ALTERNATIVES_PATH.name} registers {self.code.algorithms}"
             )
         unused = [name for name, _ in experiment.constants if name not in self.code.parts]
         if unused:
@@ -988,9 +1104,7 @@ def _simulate_and_export(candidate: Candidate) -> tuple[dict, dict]:
         with _quiet():
             context = workflow.configure_parameter_contract(context, dict(experiment.parameters))
             baseline = workflow.load_baseline(context)
-        started = time.perf_counter()
         run = workflow.run_calibration(context, submission_path=candidate.write_snapshot())
-        runtime = time.perf_counter() - started
         with _quiet():
             report = workflow.score_and_visualize(context, baseline, run)
             import matplotlib.pyplot as plt
@@ -1001,12 +1115,42 @@ def _simulate_and_export(candidate: Candidate) -> tuple[dict, dict]:
         close = getattr(context.simulator, "close", None)
         if close is not None:
             close()
-    result = {
+    return paths, _result(run, report)
+
+
+def _result(run, report) -> dict:
+    """The scores kept in the saved record (the full results are in the exported files)."""
+
+    return {
         "overall_score": report.overall_score,
         "building_scores": {score.building_id: score.calibrated_score for score in report.building_scores},
-        "runtime_seconds": round(runtime, 1),
+        "runtime_seconds": round(sum(case.runtime_seconds for case in run.cases.values()), 1),
     }
-    return paths, result
+
+
+def _record(candidate: Candidate, organizer: dict, result: dict) -> dict:
+    """Everything ``decide`` later needs to tell whether the saved result is still valid."""
+
+    experiment, probe = candidate.experiment, candidate.probe()
+    return {
+        "schema_version": RECORD_SCHEMA,
+        "run_id": experiment.run_id,
+        "name": experiment.name,
+        "created_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "host": socket.gethostname(),
+        "settings": experiment.settings(),
+        "organizer": organizer,
+        "environment": candidate.environment,
+        "code": {
+            "fingerprint": candidate.code.fingerprint,
+            "parts": candidate.code.parts,
+            "calibration_py_sha256": candidate.original_sha256,
+            "snapshot_sha256": hashlib.sha256(candidate.source).hexdigest(),
+            "equivalent": [],
+        },
+        "probe": {key: probe[key] for key in ("signatures", "executed", "evaluations")},
+        "result": result,
+    }
 
 
 def _store(candidate: Candidate, runs_dir: Path, paths: dict, record: dict) -> Path:
@@ -1018,7 +1162,7 @@ def _store(candidate: Candidate, runs_dir: Path, paths: dict, record: dict) -> P
     staging.mkdir(parents=True)
     for path in paths.values():
         shutil.copy2(path, staging / Path(path).name)
-    shutil.copy2(candidate.snapshot_path, staging / SNAPSHOT_FILE)
+    (staging / SNAPSHOT_FILE).write_bytes(candidate.source)
     (staging / RECORD_FILE).write_text(json.dumps(record, indent=2), encoding="utf-8")
     if final.exists():
         old = "unknown"
@@ -1069,26 +1213,7 @@ def run_experiment(experiment: Experiment, runs_dir: Path, organizer: dict, *, f
         for landscape, message in probe["errors"].items():
             print(f"  Warning: calibrate() failed on the '{landscape}' probe: {message}")
         paths, result = _simulate_and_export(candidate)
-        new_record = {
-            "schema_version": RECORD_SCHEMA,
-            "run_id": experiment.run_id,
-            "name": experiment.name,
-            "created_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "host": socket.gethostname(),
-            "settings": experiment.settings(),
-            "organizer": organizer,
-            "environment": candidate.environment,
-            "code": {
-                "fingerprint": candidate.code.fingerprint,
-                "parts": candidate.code.parts,
-                "calibration_py_sha256": candidate.original_sha256,
-                "snapshot_sha256": hashlib.sha256(candidate.source).hexdigest(),
-                "equivalent": [],
-            },
-            "probe": {key: probe[key] for key in ("signatures", "executed", "evaluations")},
-            "result": result,
-        }
-        final = _store(candidate, runs_dir, paths, new_record)
+        final = _store(candidate, runs_dir, paths, _record(candidate, organizer, result))
         row.update(action="ran", score=result["overall_score"], detail=f"{reason}; saved to {final.relative_to(runs_dir.parent)}")
     except ExperimentError as error:
         row.update(action="FAILED", detail=str(error))
@@ -1141,6 +1266,168 @@ def command_run(args, *, dry_run: bool = False) -> int:
 
 
 # --------------------------------------------------------------------------
+# Notebook interface
+# --------------------------------------------------------------------------
+
+
+def experiment_from_context(context, algorithm: str | None = None, name: str | None = None) -> Experiment:
+    """The experiment that the notebook's ``context`` describes.
+
+    ``algorithm`` defaults to the one in calibration.py. The parameter
+    selection is read from the context, so ``configure_parameter_contract``
+    must have been called.
+    """
+
+    from integrates_hackathon.challenge_inputs import parameter_defaults
+
+    active = {spec.name: float(spec.default) for spec in context.cases[0].parameters}
+    return Experiment(
+        index=0,
+        name=name,
+        algorithm=algorithm or submitted_algorithm(),
+        buildings=tuple(sorted(case.building_id for case in context.cases)),
+        calibration_years=tuple(sorted(int(year) for year in context.calibration_years)),
+        evaluation_budget=int(context.evaluation_budget),
+        parallel_workers=int(context.parallel_workers),
+        seed=int(context.seed),
+        parameters=tuple((parameter, active.get(parameter)) for parameter in parameter_defaults()),
+    )
+
+
+def _work_dir(experiment: Experiment, runs_dir: Path) -> Path:
+    return Path(runs_dir).parent / "work" / f"{experiment.run_id}__{os.getpid()}"
+
+
+def load_or_run_calibration(
+    context,
+    *,
+    algorithm: str | None = None,
+    name: str | None = None,
+    strict: bool = False,
+    runs_dir: Path = DEFAULT_RUNS_DIR,
+):
+    """Drop-in for ``workflow.run_calibration(context)`` that reuses saved results.
+
+    If ``outputs/runs/`` holds a valid result of this experiment (see "When is
+    a saved result reused?" in the module docstring), it is loaded and nothing
+    is simulated. Otherwise the calibration runs as usual. ``algorithm`` runs
+    a method from alternative_algorithms.py instead of the one in
+    calibration.py, and ``name`` labels the run folder like "name" in the
+    settings file.
+    """
+
+    import integrates_hackathon.notebook_workflow as workflow
+    from integrates_hackathon.submission_api import load_submission
+
+    experiment = experiment_from_context(context, algorithm, name)
+    candidate = Candidate(experiment, _work_dir(experiment, runs_dir))
+    folder = Path(runs_dir) / experiment.run_id
+    try:
+        reuse, reason, record = decide(candidate, folder, organizer_identity(), force=False, strict=strict)
+        if reuse:
+            remember_equivalent(folder, record, candidate)
+            print(
+                f"Experiment already saved ({reason}); LOADED, not rerun, from {folder}\n"
+                f"Saved overall score: {record['result']['overall_score']:.2f}. "
+                "Delete the folder to force a rerun."
+            )
+            return load_saved_calibration(folder, context, load_submission(candidate.write_snapshot()))
+        print(f"Running {experiment.run_id} ({reason}).", flush=True)
+        return workflow.run_calibration(context, submission_path=candidate.write_snapshot())
+    finally:
+        shutil.rmtree(candidate.work_dir, ignore_errors=True)
+
+
+def load_saved_calibration(folder: Path, context, submission):
+    """Rebuild the workflow's ``SubmissionRun`` from the files exported to ``folder``.
+
+    The result can be passed to the scoring, plotting, and export steps of
+    the notebook like a fresh run. Per-evaluation metrics and simulated
+    series are not part of the export and are left empty.
+    """
+
+    import pandas as pd
+
+    from integrates_hackathon.models import MonthlyConsumption
+    from integrates_hackathon.notebook_workflow import CalibrationCaseRun, SubmissionRun
+    from integrates_hackathon.objective import ObjectiveEvaluation
+
+    read = lambda name: pd.read_csv(folder / name, encoding="utf-8-sig", float_precision="round_trip")
+    meta = json.loads((folder / "submission_result.json").read_text(encoding="utf-8"))
+    summary = read("summary.csv").set_index("building_id")
+    monthly = read("monthly_results.csv")
+    trace = read("evaluation_trace.csv")
+    cases = {}
+    for case in context.cases:
+        building = case.building_id
+        rows = monthly[monthly["building_id"] == building]
+        steps = trace[trace["building_id"] == building].sort_values("evaluation_number")
+        final = steps.loc[steps["is_final_candidate"], "evaluation_number"]
+        cases[building] = CalibrationCaseRun(
+            building_id=building,
+            parameters=dict(meta["parameters"][building]),
+            simulated=tuple(
+                MonthlyConsumption(int(row.year), int(row.month), float(row.calibrated_kwh))
+                for row in rows.itertuples()
+            ),
+            evaluations=int(summary.loc[building, "evaluations"]),
+            evaluation_trace=tuple(
+                ObjectiveEvaluation(
+                    loss=float(row["loss_wape_pct"]),
+                    parameters={parameter: float(row[parameter]) for parameter in case.parameter_names},
+                    metrics=None,
+                    simulated=(),
+                )
+                for _, row in steps.iterrows()
+            ),
+            runtime_seconds=float(summary.loc[building, "runtime_seconds"]),
+            status=str(summary.loc[building, "status"]),
+            final_evaluation_number=int(final.iloc[0]) if len(final) else None,
+        )
+    return SubmissionRun(submission=submission, cases=cases)
+
+
+def save_calibration(
+    context,
+    run,
+    report,
+    exported_paths: dict,
+    *,
+    name: str | None = None,
+    runs_dir: Path = DEFAULT_RUNS_DIR,
+) -> Path:
+    """File the notebook's exported result under ``outputs/runs/<run-id>/``.
+
+    ``run``, ``report``, and ``exported_paths`` are the results of the
+    notebook's calibration, scoring, and export steps. Nothing is written if
+    a valid result of this experiment is already saved, which is the case
+    when ``load_or_run_calibration`` loaded it. Pass the same ``name`` as to
+    ``load_or_run_calibration``.
+    """
+
+    experiment = experiment_from_context(context, run.submission.algorithm_name, name)
+    candidate = Candidate(experiment, _work_dir(experiment, runs_dir))
+    folder = Path(runs_dir) / experiment.run_id
+    try:
+        if hashlib.sha256(candidate.source).hexdigest() != run.submission.source_sha256:
+            raise ExperimentError(
+                "calibration.py or alternative_algorithms.py changed after this calibration ran, so the "
+                "result cannot be filed under the current code. Rerun the calibration cell first."
+            )
+        organizer = organizer_identity()
+        reuse, reason, record = decide(candidate, folder, organizer, force=False, strict=False)
+        if reuse:
+            remember_equivalent(folder, record, candidate)
+            print(f"Already saved in {folder} ({reason}); left unchanged.")
+            return folder
+        folder = _store(candidate, Path(runs_dir), exported_paths, _record(candidate, organizer, _result(run, report)))
+        print(f"Saved to {folder}")
+        return folder
+    finally:
+        shutil.rmtree(candidate.work_dir, ignore_errors=True)
+
+
+# --------------------------------------------------------------------------
 # compare
 # --------------------------------------------------------------------------
 
@@ -1163,33 +1450,53 @@ def load_run(folder: Path) -> dict | None:
     }
 
 
-def command_compare(args) -> int:
+def compare(
+    *,
+    runs: list[str] | None = None,
+    all_runs: bool = False,
+    settings: Path = DEFAULT_SETTINGS,
+    runs_dir: Path = DEFAULT_RUNS_DIR,
+    out: Path | None = None,
+    plots: bool = True,
+) -> dict | None:
+    """Compare saved results; never simulates.
+
+    By default the experiments of the ``settings`` file are compared.
+    ``runs`` instead selects the saved runs whose folder name contains one of
+    the given texts, and ``all_runs`` selects every saved run. Returns the
+    tables ``scores``, ``details``, and ``parameters`` (pandas DataFrames),
+    ``comparable`` (False if the runs cover different buildings or years, so
+    that their overall scores should not be compared), and ``files``, the
+    paths of the CSV tables and plots written to ``out``. Returns None if no
+    saved run is selected.
+    """
+
     import pandas as pd
 
-    runs_dir: Path = args.runs_dir
+    runs_dir = Path(runs_dir)
+    out = Path(out) if out is not None else runs_dir.parent / "comparison"
     folders = sorted(d for d in runs_dir.glob("*") if d.is_dir() and not d.name.startswith(("_", ".")))
-    if args.all or args.runs:
-        selected = [d for d in folders if not args.runs or any(text in d.name for text in args.runs)]
+    if all_runs or runs:
+        selected = [d for d in folders if not runs or any(text in d.name for text in runs)]
     else:
-        wanted = [experiment.run_id for experiment in load_experiments(args.settings)]
+        wanted = [experiment.run_id for experiment in load_experiments(settings)]
         missing = [run_id for run_id in wanted if not (runs_dir / run_id).is_dir()]
         if missing:
             print("Not run yet (skipped):", *missing, sep="\n  ")
         selected = [runs_dir / run_id for run_id in wanted if (runs_dir / run_id).is_dir()]
-    runs = {folder.name: load_run(folder) for folder in selected}
-    runs = {name: run for name, run in runs.items() if run is not None}
-    if not runs:
-        print(f"No saved runs to compare in {runs_dir}. Run experiments first, or use --all.")
-        return 1
+    loaded = {folder.name: load_run(folder) for folder in selected}
+    loaded = {name: run for name, run in loaded.items() if run is not None}
+    if not loaded:
+        return None
 
-    scores = pd.DataFrame({name: run["summary"].set_index("building_id")["calibrated_score"] for name, run in runs.items()}).T
-    scores["OVERALL"] = [run["meta"]["overall_score"] for run in runs.values()]
-    scores.insert(0, "name", [run["name"] for run in runs.values()])
+    scores = pd.DataFrame({name: run["summary"].set_index("building_id")["calibrated_score"] for name, run in loaded.items()}).T
+    scores["OVERALL"] = [run["meta"]["overall_score"] for run in loaded.values()]
+    scores.insert(0, "name", [run["name"] for run in loaded.values()])
     scores.index.name = "run"
     scores = scores.sort_values("OVERALL", ascending=False)
 
     details, parameters = [], []
-    for name, run in runs.items():
+    for name, run in loaded.items():
         final = run["trace"][run["trace"]["is_final_candidate"]].set_index("building_id")["evaluation_number"]
         for row in run["summary"].itertuples():
             details.append({
@@ -1209,25 +1516,45 @@ def command_compare(args) -> int:
             parameters.append({"building_id": building, "run": name, **values})
     details = pd.DataFrame(details).set_index(["building_id", "run"]).sort_index()
     parameters = pd.DataFrame(parameters).set_index(["building_id", "run"]).sort_index()
+    scopes = {
+        (tuple(sorted(run["summary"]["building_id"])), tuple(sorted(run["monthly"]["year"].unique())))
+        for run in loaded.values()
+    }
 
-    with pd.option_context("display.width", 250, "display.max_columns", 30, "display.float_format", "{:.2f}".format):
-        print("\nCalibrated score (higher is better)\n" + scores.to_string(na_rep="-"))
-        print("\nDetails\n" + details.to_string(na_rep="-"))
-    with pd.option_context("display.width", 250, "display.max_columns", 30, "display.float_format", "{:.3f}".format):
-        print("\nBest parameters found\n" + parameters.T.to_string(na_rep="-"))
-    scopes = {(tuple(sorted(run["summary"]["building_id"])), tuple(sorted(run["monthly"]["year"].unique()))) for run in runs.values()}
-    if len(scopes) > 1:
-        print("\nNote: these runs cover different buildings or years, so their OVERALL scores are not directly comparable.")
-
-    out: Path = args.out
     out.mkdir(parents=True, exist_ok=True)
     scores.to_csv(out / "scores.csv")
     details.to_csv(out / "details.csv")
     parameters.to_csv(out / "parameters.csv")
     written = ["scores.csv", "details.csv", "parameters.csv"]
-    if not args.no_plots:
-        written += _plots(runs, [d.name for d in folders], out)
-    print(f"\nWrote {', '.join(written)} to {out}")
+    if plots:
+        written += _plots(loaded, [d.name for d in folders], out)
+    return {
+        "scores": scores,
+        "details": details,
+        "parameters": parameters,
+        "comparable": len(scopes) == 1,
+        "files": [out / name for name in written],
+    }
+
+
+def command_compare(args) -> int:
+    import pandas as pd
+
+    result = compare(
+        runs=args.runs, all_runs=args.all, settings=args.settings, runs_dir=args.runs_dir,
+        out=args.out, plots=not args.no_plots,
+    )
+    if result is None:
+        print(f"No saved runs to compare in {args.runs_dir}. Run experiments first, or use --all.")
+        return 1
+    with pd.option_context("display.width", 250, "display.max_columns", 30, "display.float_format", "{:.2f}".format):
+        print("\nCalibrated score (higher is better)\n" + result["scores"].to_string(na_rep="-"))
+        print("\nDetails\n" + result["details"].to_string(na_rep="-"))
+    with pd.option_context("display.width", 250, "display.max_columns", 30, "display.float_format", "{:.3f}".format):
+        print("\nBest parameters found\n" + result["parameters"].T.to_string(na_rep="-"))
+    if not result["comparable"]:
+        print("\nNote: these runs cover different buildings or years, so their OVERALL scores are not directly comparable.")
+    print(f"\nWrote {', '.join(path.name for path in result['files'])} to {args.out}")
     return 0
 
 
