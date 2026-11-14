@@ -19,7 +19,7 @@
 # than the job was given. Adjust memory, time, and partition for your cluster.
 
 #SBATCH --job-name=calibra
-#SBATCH --array=0-48
+#SBATCH --array=0-51
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=16G
 #SBATCH --time=04:00:00
