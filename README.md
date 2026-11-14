@@ -6,15 +6,15 @@ Team Calibra's entry to the INTEGRATES building-energy calibration hackathon.
 
 Our method is Bayesian optimization that works out, separately for each
 building, which parameters matter and concentrates the search on them. With
-the official configuration it scores **97.03 / 100**; the organizer defaults
+the official configuration it scores **97.88 / 100**; the organizer defaults
 score 12.92.
 
 | Building | Baseline Score | Calibra's Score | Remaining error (WAPE) |
 | --- | ---: | ---: | ---: |
-| `building_01` | 38.76 | 96.03 | 3.97 % |
-| `building_02` | 0.00 | 99.41 | 0.95 % |
-| `building_03` | 0.00 | 96.81 | 3.98 % |
-| **Mean (official score)** | **12.92** | **97.55** | |
+| `building_01` | 38.76 | 96.46 | 3.97 % |
+| `building_02` | 0.00 | 98.36 | 0.95 % |
+| `building_03` | 0.00 | 98.82 | 3.98 % |
+| **Mean (official score)** | **12.92** | **97.88** | |
 
 Please find the deliverable for the challenge in [`calibration.py`](calibration.py).
 
