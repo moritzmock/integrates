@@ -25,7 +25,9 @@
         "tpe",
         "cma_es",
         "hyperband",
-        "lasso_bayesian_optimisation"
+        "lasso_bayesian_optimisation",
+        "ard_bayesian_optimisation",
+        "bayesian_optimization_screened"
       ],
       "parameters": "all"
     },
@@ -39,7 +41,8 @@
         "tpe",
         "cma_es",
         "hyperband",
-        "lasso_bayesian_optimisation"
+        "lasso_bayesian_optimisation",
+        "ard_bayesian_optimisation"
       ],
       "parameters": [
         "weekday_heating_hours",
@@ -133,6 +136,48 @@
         "UCB_KAPPA": [
           1,
           4
+        ]
+      }
+    },
+    {
+      "name": "all_12",
+      "algorithm": "ard_bayesian_optimisation",
+      "parameters": "all",
+      "constants": {
+        "ARD_TOP_FRACTION": [
+          0.25,
+          0.75
+        ]
+      }
+    },
+    {
+      "name": "all_12",
+      "algorithm": "ard_bayesian_optimisation",
+      "parameters": "all",
+      "constants": {
+        "ARD_FOCUS_END_FRACTION": [
+          0.5,
+          0.75
+        ]
+      }
+    },
+    {
+      "name": "all_12",
+      "algorithm": "ard_bayesian_optimisation",
+      "parameters": "all",
+      "constants": {
+        "ARD_INITIAL_FRACTION": [
+          0.2
+        ]
+      }
+    },
+    {
+      "name": "all_12",
+      "algorithm": "ard_bayesian_optimisation",
+      "parameters": "all",
+      "constants": {
+        "ARD_RKN": [
+          1
         ]
       }
     }

@@ -8,6 +8,10 @@ parameters, so submissions must return only the best parameter dictionary.
 
 - ``random_search``: uniform sampling.
 - ``bayesian_optimization`` (and ``_cl``, ``_mes``): Gaussian-process surrogate.
+- ``bayesian_optimization_screened``: screening design first, then Bayesian
+  optimization focused on the parameters that matter for the building.
+- ``ard_bayesian_optimisation``: Bayesian optimization that, mid-run, varies
+  only the parameters with the shortest fitted GP length scales.
 - ``tpe``: Tree-structured Parzen Estimator.
 - ``cma_es``: Covariance Matrix Adaptation Evolution Strategy.
 - ``hyperband``: Hyperband over local-search arms (see its docstring: the
@@ -23,6 +27,7 @@ import warnings
 from typing import Callable, Sequence
 
 import numpy as np
+from scipy.linalg import hadamard
 from scipy.special import logsumexp
 from scipy.stats import norm, qmc
 from sklearn.exceptions import ConvergenceWarning
@@ -309,11 +314,19 @@ def _propose_batch(
     rng: np.random.Generator,
     acquisition: Callable,
     fantasy: Callable,
+    active: np.ndarray | None = None,
 ) -> np.ndarray:
+    """Greedy batch; if ``active`` is given, only those parameters are varied
+    and the others are pinned to the best observed point's values."""
+
     y = np.log1p(np.maximum(losses, 0.0))  # Compress large errors; smoother surface.
     gp = _fit_gp(X, y, rng)
     kernel = gp.kernel_
     pool = _candidate_pool(X, y, rng)
+    if active is not None:
+        pinned = np.tile(X[int(np.argmin(y))], (len(pool), 1))
+        pinned[:, active] = pool[:, active]
+        pool = pinned
     X_fantasy, y_fantasy = X.copy(), y.copy()
     batch: list[np.ndarray] = []
     for _ in range(size):
@@ -763,6 +776,190 @@ def _propose_lasso_batch(
     return np.asarray(batch)
 
 
+# --------------------------------------------------------------------------
+# Bayesian optimization focused by ARD length scales
+# --------------------------------------------------------------------------
+
+ARD_INITIAL_FRACTION = 0.35  # at most this share of the budget goes to the initial design
+ARD_FOCUS_END_FRACTION = 0.8  # after this share of the budget every parameter is searched again
+ARD_TOP_FRACTION = 0.5  # share of the parameters searched during the focus stage
+ARD_RKN = 0.25  # re-rank after this share of the focus stage (0: before every batch)
+
+
+def ard_bayesian_optimisation(
+    history: _History, start: np.ndarray, rng: np.random.Generator
+) -> None:
+    """Bayesian optimization in three stages, focused by ARD length scales.
+
+    Model, acquisition, candidates, and batch filling are those of
+    ``bayesian_optimization`` (Expected Improvement, kriging believer).
+
+    1. Initial stage: the start vector plus a Latin hypercube sample.
+    2. Focus stage (until ARD_FOCUS_END_FRACTION of the budget is used): only
+       the ARD_TOP_FRACTION of the parameters with the shortest fitted GP
+       length scales are varied; the others are pinned to the best point's
+       values. The ranking is redone every ARD_RKN of the focus stage.
+    3. Final stage: every parameter is searched again.
+    """
+
+    if not 0 <= ARD_RKN <= 1:
+        raise ValueError("ARD_RKN must be between 0 and 1")
+
+    dim = len(start)
+    n_init = max(dim + 1, history.objective.max_batch_size)
+    n_init = max(1, min(n_init, int(history.remaining() * ARD_INITIAL_FRACTION)))
+    design = qmc.LatinHypercube(d=dim, seed=rng)
+    history.evaluate(np.vstack([history.to_unit(start), design.random(max(0, n_init - 1))]))
+
+    active = None
+    next_ranking = 0.0  # focus-stage progress at which the ranking is redone
+
+    while history.can_continue():
+        progress = history.submitted / max(1, history.budget)
+        if progress < ARD_FOCUS_END_FRACTION:
+            focus_span = max(ARD_FOCUS_END_FRACTION - ARD_INITIAL_FRACTION, 1e-12)
+            focus_progress = (progress - ARD_INITIAL_FRACTION) / focus_span
+            if active is None or ARD_RKN == 0 or focus_progress >= next_ranking:
+                y = np.log1p(np.maximum(np.array(history.y), 0.0))
+                active = _ard_active_dimensions(_fit_gp(np.array(history.X), y, rng))
+                next_ranking = focus_progress + ARD_RKN
+                print(f"ard: searching parameters {active.tolist()} of {dim}")
+        else:
+            active = None  # final stage: all parameters
+
+        batch = _propose_batch(
+            np.array(history.X),
+            np.array(history.y),
+            history.next_batch_size(),
+            rng,
+            _expected_improvement,
+            _kriging_believer,
+            active=active,
+        )
+        history.evaluate(batch)
+
+
+def _ard_active_dimensions(gp) -> np.ndarray:
+    """The ARD_TOP_FRACTION of the parameters with the shortest length scales."""
+
+    # ConstantKernel * Matern + WhiteKernel: the Matern is kernel_.k1.k2.
+    length_scales = np.asarray(gp.kernel_.k1.k2.length_scale, dtype=float).reshape(-1)
+    count = max(1, int(np.ceil(len(length_scales) * ARD_TOP_FRACTION)))
+    return np.sort(np.argsort(length_scales, kind="stable")[:count])
+
+
+# --------------------------------------------------------------------------
+# Bayesian optimization with a runtime parameter screening
+# --------------------------------------------------------------------------
+
+SCREENING_LOW_LEVEL = 0.25  # low level of the screening design (high = 1 - low), unit range
+SCREENING_THRESHOLD = 0.1  # a parameter is important if its effect >= this share of the largest
+SCREENING_FULL_SPACE_SHARE = 0.2  # share of candidates that still vary every parameter
+
+
+def bayesian_optimization_screened(
+    history: _History, start: np.ndarray, rng: np.random.Generator
+) -> None:
+    """Bayesian optimization that screens the parameters first, then focuses.
+
+    Meant to run with every parameter active: it finds out per building which
+    parameters matter instead of relying on a hand-picked subset.
+
+    1. Initial design: the start vector plus a two-level screening design
+       (``_screening_design``; 16 runs for 9 to 15 parameters). It replaces
+       the Latin hypercube of the other Bayesian optimization methods.
+    2. First round: a parameter's effect is its linear main effect on
+       log(1 + WAPE), which the screening design estimates from all runs.
+    3. Later rounds: the effect is re-estimated from the GP as the range of
+       the predicted log-loss when only that parameter is moved across its
+       range through the best point. A parameter can therefore come back.
+    4. Each round, parameters whose effect is at least SCREENING_THRESHOLD of
+       the largest effect are searched. In most candidates the others are
+       pinned to the best point's values (not to the defaults); a
+       SCREENING_FULL_SPACE_SHARE of the candidates still varies everything,
+       so the selection is soft.
+
+    Model, acquisition, and batch filling are those of
+    ``bayesian_optimization`` (Expected Improvement, kriging believer).
+    If the screening design would cost more than half the budget, the Latin
+    hypercube design is used and every round uses the GP-based effects.
+    """
+
+    dim = len(start)
+    design = _screening_design(dim)
+    screened = 1 + len(design) <= history.remaining() // 2
+    if not screened:
+        n_init = max(dim + 1, history.objective.max_batch_size)
+        n_init = max(1, min(n_init, history.remaining() // 2))
+        design = qmc.LatinHypercube(d=dim, seed=rng).random(max(0, n_init - 1))
+    history.evaluate(np.vstack([history.to_unit(start), design]))
+
+    while history.can_continue():
+        X = np.array(history.X)
+        y = np.log1p(np.maximum(np.array(history.y), 0.0))
+        gp = _fit_gp(X, y, rng)
+        best = X[int(np.argmin(y))]
+        effects = _linear_effects(X, y) if screened else _profile_effects(gp, best)
+        screened = False  # Only the first round uses the design's main effects.
+        active = effects >= SCREENING_THRESHOLD * effects.max()
+        print(f"screening: searching parameters {np.flatnonzero(active).tolist()} of {dim}")
+
+        # Candidates of plain Bayesian optimization, most of them moved into
+        # the subspace of the important parameters through the best point.
+        pool = _candidate_pool(X, y, rng)
+        pinned = np.where(active[None, :], pool, best[None, :])
+        full_space = rng.uniform(size=len(pool)) < SCREENING_FULL_SPACE_SHARE
+        pool = np.where(full_space[:, None], pool, pinned)
+
+        kernel = gp.kernel_
+        X_fantasy, y_fantasy = X.copy(), y.copy()
+        batch = []
+        for _ in range(history.next_batch_size()):
+            score = _expected_improvement(gp, pool, float(y_fantasy.min()))
+            choice = pool[int(np.argmax(score))]
+            batch.append(choice)
+            X_fantasy = np.vstack([X_fantasy, choice])
+            y_fantasy = np.append(y_fantasy, _kriging_believer(gp, choice, y))
+            gp = _fit_gp(X_fantasy, y_fantasy, rng, kernel=kernel)
+        history.evaluate(np.array(batch))
+
+
+def _screening_design(dim: int) -> np.ndarray:
+    """Two-level orthogonal design in the unit cube, one column per parameter.
+
+    The columns come from a Hadamard matrix (without its constant column), so
+    every parameter is at its low level in half of the runs and at its high
+    level in the other half, and all columns are uncorrelated. The number of
+    runs is the smallest power of two above ``dim``. Main effects are mixed
+    with two-parameter interactions (resolution III), which is the price for
+    so few runs.
+    """
+
+    runs = 2 ** int(np.ceil(np.log2(dim + 1)))
+    signs = hadamard(runs)[:, 1 : dim + 1]
+    return np.where(signs > 0, 1.0 - SCREENING_LOW_LEVEL, SCREENING_LOW_LEVEL)
+
+
+def _linear_effects(X: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """|change of y| per parameter across its full range, from a linear fit."""
+
+    design = np.column_stack([np.ones(len(X)), X])
+    coefficients = np.linalg.lstsq(design, y, rcond=None)[0]
+    return np.abs(coefficients[1:])
+
+
+def _profile_effects(gp, best: np.ndarray, steps: int = 11) -> np.ndarray:
+    """Range of the GP mean when one parameter at a time crosses its range.
+
+    All other parameters stay at ``best``, so this measures what each
+    parameter can still change around the best point found so far.
+    """
+
+    dim = len(best)
+    points = np.tile(best, (dim, steps, 1))
+    points[np.arange(dim), :, np.arange(dim)] = np.linspace(0.0, 1.0, steps)
+    mean = gp.predict(points.reshape(dim * steps, dim)).reshape(dim, steps)
+    return mean.max(axis=1) - mean.min(axis=1)
 
 
 _ALGORITHMS = {
@@ -774,7 +971,9 @@ _ALGORITHMS = {
     "tpe": tpe,
     "cma_es": cma_es,
     "hyperband": hyperband,
-    "lasso_bayesian_optimisation": lasso_bayesian_optimisation
+    "lasso_bayesian_optimisation": lasso_bayesian_optimisation,
+    "ard_bayesian_optimisation": ard_bayesian_optimisation,
+    "bayesian_optimization_screened": bayesian_optimization_screened,
 }
 
 
