@@ -1,0 +1,32 @@
+{
+  "algorithm_fingerprint": "9841adcbc7f1489cf9d90b798665d01baea88b1d124932be7eb2857bd6242c37",
+  "fingerprint_parts": {
+    "ALGORITHM_NAME": "9eb401ae0a1afe04",
+    "Callable": "4c178dffe5536e01",
+    "ConstantKernel": "47daf5cbff1dd0de",
+    "ConvergenceWarning": "279552d5547e1017",
+    "GaussianProcessRegressor": "b139b46c13278596",
+    "LASSO_ALPHA": "07eb54ee93817d77",
+    "LASSO_EXPLAINED_FRACTION": "5ed79fb9017f8b29",
+    "LASSO_MAX_ACTIVE_FRACTION": "46d084f1a9aca616",
+    "Matern": "47daf5cbff1dd0de",
+    "Sequence": "4c178dffe5536e01",
+    "UCB_KAPPA": "f8f2802e69972595",
+    "WhiteKernel": "47daf5cbff1dd0de",
+    "_History": "cb5828d30070f158",
+    "_MAX_STALLED_BATCHES": "3e191220c907f1d5",
+    "_fit_gp": "2944e3e80e66ceb9",
+    "_lasso_candidate_pool": "a46dfa7d5371c149",
+    "_lasso_coefficients": "eb570ea2ffd90abf",
+    "_propose_lasso_batch": "27cb5a203cb121b9",
+    "_select_active_dimensions": "fd288c1e7614c60a",
+    "_upper_confidence_bound": "33ebe9d6de33c834",
+    "calibrate": "00450ae6a751083b",
+    "lasso_bayesian_optimisation": "b2a07bf3aa16fd88",
+    "np": "271fc31378e1108a",
+    "qmc": "3418247540535515",
+    "warnings": "b5aca9021b81c731",
+    "<selected>": "cb237656db1e8730"
+  },
+  "calibration_py_sha256": "ae3e595cf9c4cb10cbd651cdc0fad13b05f70256c66ca66d6ec35d420797abc3"
+}

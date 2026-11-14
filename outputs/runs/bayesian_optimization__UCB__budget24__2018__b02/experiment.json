@@ -1,0 +1,29 @@
+{
+  "algorithm_fingerprint": "ee1705a3bfee50247769cd91de20901cca17db844ff92a311e883f8fced5bb58",
+  "fingerprint_parts": {
+    "ALGORITHM_NAME": "e7fead8272605781",
+    "Callable": "4c178dffe5536e01",
+    "ConstantKernel": "47daf5cbff1dd0de",
+    "ConvergenceWarning": "279552d5547e1017",
+    "GaussianProcessRegressor": "b139b46c13278596",
+    "Matern": "47daf5cbff1dd0de",
+    "Sequence": "4c178dffe5536e01",
+    "UCB_KAPPA": "f8f2802e69972595",
+    "WhiteKernel": "47daf5cbff1dd0de",
+    "_History": "cb5828d30070f158",
+    "_MAX_STALLED_BATCHES": "3e191220c907f1d5",
+    "_candidate_pool": "ed55293cc1ef32e5",
+    "_expected_improvement": "f315a0f5b67e30b7",
+    "_fit_gp": "2944e3e80e66ceb9",
+    "_propose_batch": "a38c981ff8bd86d2",
+    "_upper_confidence_bound": "33ebe9d6de33c834",
+    "bayesian_optimization": "076a37fcb1b94d32",
+    "calibrate": "00450ae6a751083b",
+    "norm": "3418247540535515",
+    "np": "271fc31378e1108a",
+    "qmc": "3418247540535515",
+    "warnings": "b5aca9021b81c731",
+    "<selected>": "afab1da2ecf70e95"
+  },
+  "calibration_py_sha256": "78a4cd7f3d212fdaffcb838947ff1bdc974bb79e97a37e713510e467dcdae78b"
+}
