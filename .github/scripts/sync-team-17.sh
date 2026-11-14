@@ -38,8 +38,13 @@ export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=credential.helper GIT_CONFIG_VALUE_0=
 git -C "$source_root" archive --format=tar --output="$sync_work_dir/source.tar" "$source_commit"
 git clone --quiet --depth=1 --single-branch --branch "$target_branch" "$target_url" "$sync_work_dir/target"
 target_root="$sync_work_dir/target"
-git -C "$target_root" config user.name 'moritz-mock'
-git -C "$target_root" config user.email 'momock@unibz.it'
+script_directory=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+# Draw once so a rejected push keeps the same identity on every retry.
+sync_identity=$(python3 "$script_directory/sync_author.py")
+IFS=$'\t' read -r sync_author_name sync_author_email <<< "$sync_identity"
+git -C "$target_root" config user.name "$sync_author_name"
+git -C "$target_root" config user.email "$sync_author_email"
+printf 'Sync author: %s <%s>\n' "$sync_author_name" "$sync_author_email"
 
 for attempt in 1 2 3 4 5; do
   # Both source repositories push here. Rebuild on the newest remote commit

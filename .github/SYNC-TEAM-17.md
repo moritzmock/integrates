@@ -26,7 +26,11 @@ the remote HTTPS repository directly.
 
 ## Sync behavior
 
-- Sync commits use moritz-mock <momock@unibz.it> as both author and committer.
+- Each new sync commit randomly selects moritz-mock, daniel-planotscher,
+  jonas-rabensteiner or thomas-borsani, with a 25 percent chance for each.
+  Author and committer use the selected name and its recorded commit email.
+  The roster lives in `.github/scripts/sync_author.py` in both sources.
+  Repeated selections are possible; push retries keep the original draw.
 - Only committed source files are copied; `.git` and untracked files are excluded.
 - Source deletions are applied inside this project's folder.
 - The other project and the root README/license are preserved.

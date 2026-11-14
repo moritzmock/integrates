@@ -23,6 +23,9 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
+      - name: Test team author selection and push retries
+        run: python3 -B .github/scripts/test_sync_author.py -v
+
       - name: Sync committed files over HTTPS
         env:
           HACKATHON_USERNAME: ${{ secrets.HACKATHON_USERNAME }}
