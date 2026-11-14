@@ -1,13 +1,15 @@
-# Scheduled sync to team-17
+# Automatic sync to team-17
 
 The `Sync backend to team-17` GitHub Action publishes the latest committed
 snapshot of this repository's default branch into `backend/` on the `main`
 branch of https://repos.hackathon.bz.it/2026-sfscon/team-17.git.
 The Hackathon2026 repository has a matching workflow that owns `frontend/`.
 
-The frontend runs every 15 minutes at minutes 03, 18, 33, and 48. The backend
-runs at minutes 08, 23, 38, and 53. GitHub may delay scheduled runs. Both
-workflows can also be started from **Actions → Run workflow**.
+Every push to main triggers an automatic sync. The backend syncs directly
+on main pushes. The frontend waits for Normalize Git authors to finish
+successfully on main, then syncs its latest default-branch snapshot. There
+is no timed schedule. Both workflows can also be started from
+**Actions → Run workflow**.
 
 ## Credentials and activation
 
@@ -19,7 +21,7 @@ Actions → Repository secrets**:
   to team-17. Prefer an access token restricted to the target repository.
 
 Commit and push the workflow and script to the GitHub default branch to
-activate the schedule. Your Mac can be switched off; the runner connects to
+activate automatic sync. Your Mac can be switched off; the runner connects to
 the remote HTTPS repository directly.
 
 ## Sync behavior
