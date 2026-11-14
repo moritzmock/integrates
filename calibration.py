@@ -129,6 +129,12 @@ def bayesian_optimization_mes(
 
     _bo_loop(history, start, rng, _max_value_entropy_search, _kriging_believer)
 
+def bayesian_optimization_ucb(
+    history: _History, start: np.ndarray, rng: np.random.Generator
+) -> None:
+    """GP confidence bound (UCB on -loss, i.e. LCB on loss), kriging believer."""
+
+    _bo_loop(history, start, rng, _lower_confidence_bound, _kriging_believer)
 
 def _bo_loop(
     history: _History,
@@ -250,6 +256,24 @@ def _max_value_entropy_search(
     pdf_over_cdf = np.exp(norm.logpdf(gamma) - log_cdf)  # stable for very negative gamma
     score = 0.5 * gamma * pdf_over_cdf - log_cdf
     return score.mean(axis=1)
+
+UCB_KAPPA = 2  # exploration weight of the confidence-bound acquisitions
+
+
+def _upper_confidence_bound(gp, candidates: np.ndarray, kappa: float | None = None) -> np.ndarray:
+    """Return UCB values for a reward-maximizing Gaussian process."""
+    kappa = UCB_KAPPA if kappa is None else kappa
+    mean, std = gp.predict(candidates, return_std=True)
+    return mean + kappa * np.maximum(std, 1e-9)
+
+
+def _lower_confidence_bound(gp, candidates: np.ndarray, best: float, rng=None) -> np.ndarray:
+    """Confidence bound for a loss-minimizing GP, negated so higher is better.
+
+    ``best`` and ``rng`` are unused; they keep the shared acquisition signature.
+    """
+    mean, std = gp.predict(candidates, return_std=True)
+    return -(mean - UCB_KAPPA * np.maximum(std, 1e-9))
 
 
 def _kriging_believer(gp, point: np.ndarray, y_observed: np.ndarray) -> float:
@@ -599,15 +623,158 @@ def _hyperband_advance(
         for arm in searching:
             arm["step"] *= 1.2 if id(arm) in improved else 0.6
 
+LASSO_MAX_ACTIVE_FRACTION = 0.6
+LASSO_EXPLAINED_FRACTION = 0.9
+LASSO_ALPHA = 0.03
+
+def lasso_bayesian_optimisation(
+    history: _History, start: np.ndarray, rng: np.random.Generator
+) -> None:
+    """LassoBO-style optimization using this file's GP and acquisition code.
+
+    The Lasso ranks variables from the observed reward. The GP then searches
+    the UCB acquisition function while varying only the selected active
+    dimensions; inactive dimensions are kept at promising background values.
+    """
+    dim = len(start)
+    n_init = max(dim + 1, history.objective.max_batch_size)
+    n_init = max(1, min(n_init, int(history.remaining() * 0.35)))
+    design = qmc.LatinHypercube(d=dim, seed=rng)
+    initial = np.vstack([history.to_unit(start), design.random(max(0, n_init - 1))])
+    history.evaluate(initial)
+
+    while history.can_continue():
+        X = np.asarray(history.X)
+        losses = np.asarray(history.y)
+        reward = -np.log1p(np.maximum(losses, 0.0))
+        coefficients = _lasso_coefficients(X, reward)
+        active = _select_active_dimensions(
+            coefficients,
+            explained_fraction=LASSO_EXPLAINED_FRACTION,
+            max_active_fraction=LASSO_MAX_ACTIVE_FRACTION,
+        )
+        batch = _propose_lasso_batch(
+            X,
+            losses,
+            history.next_batch_size(),
+            active,
+            rng,
+        )
+        history.evaluate(batch)
+
+
+def _lasso_coefficients(
+    X: np.ndarray,
+    target: np.ndarray,
+    alpha: float = LASSO_ALPHA,
+    iterations: int = 250,
+) -> np.ndarray:
+    """Fit a standardized linear Lasso using coordinate descent."""
+    means = X.mean(axis=0)
+    scales = X.std(axis=0)
+    scales = np.where(scales > 1e-12, scales, 1.0)
+    Z = (X - means) / scales
+    residual = target - target.mean()
+    coefficients = np.zeros(X.shape[1])
+    column_norms = np.maximum(np.sum(Z * Z, axis=0), 1e-12)
+    for _ in range(iterations):
+        maximum_change = 0.0
+        for column in range(X.shape[1]):
+            old = coefficients[column]
+            partial = np.dot(Z[:, column], residual + Z[:, column] * old)
+            new = np.sign(partial) * max(abs(partial) - alpha * len(X), 0.0)
+            new /= column_norms[column]
+            residual -= Z[:, column] * (new - old)
+            coefficients[column] = new
+            maximum_change = max(maximum_change, abs(new - old))
+        if maximum_change < 1e-7:
+            break
+    return coefficients
+
+
+def _select_active_dimensions(
+    coefficients: np.ndarray,
+    explained_fraction: float,
+    max_active_fraction: float,
+) -> np.ndarray:
+    """Select variables explaining most of the absolute Lasso signal."""
+    scores = np.abs(coefficients)
+    if not np.any(scores > 1e-12):
+        return np.array([int(np.argmax(scores))])
+    order = np.argsort(-scores)
+    target = explained_fraction * float(scores.sum())
+    max_active = max(1, int(np.ceil(max_active_fraction * len(scores))))
+    selected, explained = [], 0.0
+    for index in order:
+        selected.append(int(index))
+        explained += scores[index]
+        if explained >= target or len(selected) >= max_active:
+            break
+    return np.array(sorted(selected), dtype=int)
+
+
+def _lasso_candidate_pool(
+    X: np.ndarray,
+    losses: np.ndarray,
+    active: np.ndarray,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Generate global and local candidates with inactive values fixed."""
+    dim = X.shape[1]
+    inactive = np.setdiff1d(np.arange(dim), active)
+    elite = X[np.argsort(losses)[: min(3, len(losses))]]
+    candidates = []
+    for point in elite:
+        local = np.tile(point, (400, 1))
+        local[:, active] = np.clip(
+            local[:, active] + rng.normal(0.0, 0.15, (400, len(active))), 0.0, 1.0
+        )
+        candidates.append(local)
+    global_points = rng.uniform(size=(2000, dim))
+    global_points[:, inactive] = elite[0, inactive]
+    candidates.append(global_points)
+    lhs = qmc.LatinHypercube(d=dim, seed=rng).random(1000)
+    lhs[:, inactive] = elite[0, inactive]
+    candidates.append(lhs)
+    return np.clip(np.vstack(candidates), 0.0, 1.0)
+
+
+def _propose_lasso_batch(
+    X: np.ndarray,
+    losses: np.ndarray,
+    size: int,
+    active: np.ndarray,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Fit the existing GP and select a batch using UCB in active dimensions."""
+    reward = -np.log1p(np.maximum(losses, 0.0))
+    gp = _fit_gp(X, reward, rng)
+    kernel = gp.kernel_
+    X_fantasy, reward_fantasy = X.copy(), reward.copy()
+    batch = []
+    for _ in range(size):
+        pool = _lasso_candidate_pool(X_fantasy, -reward_fantasy, active, rng)
+        scores = _upper_confidence_bound(gp, pool)
+        choice = pool[int(np.argmax(scores))]
+        batch.append(choice)
+        X_fantasy = np.vstack([X_fantasy, choice])
+        reward_fantasy = np.append(reward_fantasy, gp.predict(choice[None, :])[0])
+        gp = _fit_gp(X_fantasy, reward_fantasy, rng, kernel=kernel)
+    return np.asarray(batch)
+
+
+
 
 _ALGORITHMS = {
     "random_search": random_search,
     "bayesian_optimization": bayesian_optimization,
     "bayesian_optimization_cl": bayesian_optimization_cl,
     "bayesian_optimization_mes": bayesian_optimization_mes,
+    "bayesian_optimization_ucb": bayesian_optimization_ucb,
     "tpe": tpe,
     "cma_es": cma_es,
     "hyperband": hyperband,
+    "lasso_bayesian_optimisation": lasso_bayesian_optimisation
 }
 
 

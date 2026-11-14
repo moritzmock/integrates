@@ -41,12 +41,20 @@ lists; every combination becomes one experiment. ``parameters`` is ``"all"``
 (all twelve active, starting at the organizer defaults), a list of names, or
 an object ``{name: start value or null}``.
 
+``constants`` tunes module-level numeric constants of ``calibration.py``, e.g.
+``{"UCB_KAPPA": [1, 2, 4], "LASSO_ALPHA": 0.03}``. Each value may be a list;
+every combination becomes one experiment. An entry's ``constants`` are merged
+over those in ``defaults``. A constant must be assigned exactly once at module
+level to a number, and must be used by the experiment's algorithm. The folder
+name gets one ``<initials><value>`` part per constant (``ucb_kappa`` -> ``uk2``).
+Experiments without constants run the file's own values.
+
 How an algorithm is selected
 ----------------------------
 ``calibration.py`` chooses its method with the module constant
 ``ALGORITHM_NAME``. For each experiment the runner writes a copy of
-``calibration.py`` in which only that line is changed and hands the copy to
-the organizer workflow. The copy used is stored with the result as
+``calibration.py`` in which only that line (and the lines of any tuned
+``constants``) is changed and hands the copy to the organizer workflow. The copy used is stored with the result as
 ``calibration_snapshot.py``.
 
 When is a saved result reused?
@@ -119,6 +127,7 @@ DEFAULTS = {
     "parallel_workers": 12,
     "seed": OFFICIAL_SEED,
     "parameters": "all",
+    "constants": {},
 }
 GRID_KEYS = ("algorithm", "evaluation_budget", "parallel_workers", "seed")
 ENTRY_KEYS = {"name", "algorithm", *DEFAULTS}
@@ -148,9 +157,10 @@ class Experiment:
     parallel_workers: int
     seed: int
     parameters: tuple[tuple[str, float | None], ...]  # organizer order
+    constants: tuple[tuple[str, int | float], ...] = ()  # sorted by name
 
     def settings(self) -> dict:
-        return {
+        settings = {
             "algorithm": self.algorithm,
             "buildings": list(self.buildings),
             "calibration_years": list(self.calibration_years),
@@ -159,6 +169,9 @@ class Experiment:
             "seed": self.seed,
             "parameters": dict(self.parameters),
         }
+        if self.constants:  # omitted when empty, so older saved records still match
+            settings["constants"] = dict(self.constants)
+        return settings
 
     @property
     def run_id(self) -> str:
@@ -180,6 +193,9 @@ class Experiment:
         ]
         if self.seed != OFFICIAL_SEED:
             parts.append(f"seed{self.seed}")
+        for constant, value in self.constants:
+            initials = "".join(word[0] for word in constant.lower().split("_") if word)
+            parts.append(safe(f"{initials}{value:g}"))
         if not self.name and dict(self.parameters) != parameter_defaults():
             parts.append("p" + _sha(json.dumps(dict(self.parameters), sort_keys=True), 6))
         return "__".join(parts)
@@ -202,6 +218,22 @@ def _resolve_parameters(value) -> tuple[tuple[str, float | None], ...]:
     if value != "all" and unknown:
         raise ValueError(f"Unknown parameter names: {sorted(unknown)}; known: {sorted(defaults)}")
     return tuple((name, None if v is None else float(v)) for name, v in selection.items())
+
+
+def _resolve_constants(value) -> list[tuple[tuple[str, int | float], ...]]:
+    """Every combination of the tuned constants, each sorted by name."""
+
+    if not isinstance(value, dict):
+        raise ValueError('"constants" must be an object {NAME: number or list of numbers}')
+    names, options = sorted(value), []
+    for name in names:
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) or name == SELECTOR:
+            raise ValueError(f"invalid constant name {name!r}")
+        values = value[name] if isinstance(value[name], list) else [value[name]]
+        if not values or any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in values):
+            raise ValueError(f"constant {name} needs a number or a non-empty list of numbers")
+        options.append(values)
+    return [tuple(zip(names, combination)) for combination in product(*options)]
 
 
 def load_experiments(path: Path) -> list[Experiment]:
@@ -235,7 +267,10 @@ def load_experiments(path: Path) -> list[Experiment]:
         grid =[merged[key] if isinstance(merged[key], list) else [merged[key]] for key in GRID_KEYS]
         try:
             parameters = _resolve_parameters(merged["parameters"])
-            for algorithm, budget, workers, seed in product(*grid):
+            if not isinstance(defaults["constants"], dict) or not isinstance(entry.get("constants", {}), dict):
+                raise ValueError('"constants" must be an object {NAME: number or list of numbers}')
+            grid.append(_resolve_constants({**defaults["constants"], **entry.get("constants", {})}))
+            for algorithm, budget, workers, seed, constants in product(*grid):
                 experiment = Experiment(
                     index=len(experiments),
                     name=entry.get("name"),
@@ -246,6 +281,7 @@ def load_experiments(path: Path) -> list[Experiment]:
                     parallel_workers=int(workers),
                     seed=int(seed),
                     parameters=parameters,
+                    constants=constants,
                 )
                 if min(experiment.evaluation_budget, experiment.parallel_workers) < 1:
                     raise ValueError("evaluation_budget and parallel_workers must be at least 1")
@@ -545,25 +581,65 @@ def analyse_source(text: str, algorithm: str) -> CodeInfo:
     return CodeInfo(fingerprint, dict(sorted(parts.items())), line_index, modules, algorithms, current)
 
 
-def variant_source(original: bytes, algorithm: str) -> bytes:
-    """Return calibration.py with only the ALGORITHM_NAME line set to ``algorithm``.
+def variant_source(original: bytes, algorithm: str, constants=()) -> bytes:
+    """Return calibration.py with the ALGORITHM_NAME line set to ``algorithm``.
 
-    If the file already selects ``algorithm`` the original bytes are returned,
-    so that run uses (and records the hash of) the exact file to be submitted.
+    Each ``(NAME, value)`` in ``constants`` replaces the module-level
+    ``NAME = <number>`` line. If nothing needs to change the original bytes are
+    returned, so that run uses (and records the hash of) the exact file to be
+    submitted.
     """
 
     text = original.decode("utf-8")
     info = analyse_source(text, algorithm)
-    if info.current_algorithm == algorithm:
-        return original
-    pattern = re.compile(rf"^{SELECTOR}[ \t]*(?::[^=\r\n]+)?=[^\r\n]*", re.M)
-    if len(pattern.findall(text)) != 1:
-        raise ExperimentError(
-            f"calibration.py must contain exactly one module-level '{SELECTOR} = \"...\"' line "
-            "so the runner can select an algorithm"
-        )
-    replaced = pattern.sub(lambda _: f"{SELECTOR} = {json.dumps(algorithm)}", text)
-    return replaced.encode("utf-8")
+    if info.current_algorithm != algorithm:
+        pattern = re.compile(rf"^{SELECTOR}[ \t]*(?::[^=\r\n]+)?=[^\r\n]*", re.M)
+        if len(pattern.findall(text)) != 1:
+            raise ExperimentError(
+                f"calibration.py must contain exactly one module-level '{SELECTOR} = \"...\"' line "
+                "so the runner can select an algorithm"
+            )
+        text = pattern.sub(lambda _: f"{SELECTOR} = {json.dumps(algorithm)}", text)
+
+    current = _module_constants(text)
+    for name, value in constants:
+        if name not in current:
+            raise ExperimentError(
+                f"constant {name} must be assigned exactly once at module level to a number "
+                f"in calibration.py (found: {sorted(current) or 'none'})"
+            )
+        if current[name] == value and type(current[name]) is type(value):
+            continue
+        pattern = re.compile(rf"^{name}[ \t]*(?::[^=\r\n]+)?=[^\r\n]*", re.M)
+        if len(pattern.findall(text)) != 1:
+            raise ExperimentError(f"calibration.py must contain exactly one '{name} = ...' line at column 0")
+        text = pattern.sub(lambda _: f"{name} = {value!r}  # set by experiments.py", text)
+    replaced = text.encode("utf-8")
+    return original if replaced == original else replaced
+
+
+def _module_constants(text: str) -> dict[str, int | float]:
+    """Names assigned exactly once at module level, to a plain (signed) number."""
+
+    counts: dict[str, int] = {}
+    values: dict[str, int | float] = {}
+    for stmt in ast.parse(text).body:
+        if isinstance(stmt, ast.Assign):
+            targets, value = stmt.targets, stmt.value
+        elif isinstance(stmt, ast.AnnAssign) and stmt.value is not None:
+            targets, value = [stmt.target], stmt.value
+        else:
+            continue
+        for target in targets:
+            if isinstance(target, ast.Name):
+                counts[target.id] = counts.get(target.id, 0) + 1
+                try:
+                    number = ast.literal_eval(value)
+                except (ValueError, TypeError, SyntaxError, RecursionError):
+                    continue  # not a literal
+                if isinstance(number, (int, float)) and not isinstance(number, bool):
+                    values[target.id] = number
+    return {name: value for name, value in values.items() if counts[name] == 1}
 
 
 # --------------------------------------------------------------------------
@@ -748,11 +824,17 @@ class Candidate:
         self.experiment = experiment
         original = CALIBRATION_PATH.read_bytes()
         self.original_sha256 = hashlib.sha256(original).hexdigest()
-        self.source = variant_source(original, experiment.algorithm)
+        self.source = variant_source(original, experiment.algorithm, experiment.constants)
         self.code = analyse_source(self.source.decode("utf-8"), experiment.algorithm)
         if self.code.algorithms is not None and experiment.algorithm not in self.code.algorithms:
             raise ExperimentError(
                 f"Unknown algorithm {experiment.algorithm!r}; calibration.py registers {self.code.algorithms}"
+            )
+        unused = [name for name, _ in experiment.constants if name not in self.code.parts]
+        if unused:
+            raise ExperimentError(
+                f"constant(s) {', '.join(unused)} are not used by algorithm {experiment.algorithm!r}, "
+                "so tuning them would only repeat the same run"
             )
         self.environment = environment_identity(self.code.modules)
         self.work_dir = work_dir
