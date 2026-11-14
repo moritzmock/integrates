@@ -1,0 +1,175 @@
+{
+  "schema_version": 2,
+  "run_id": "all_12__bayesian_optimization_ucb__budget48__2018+2019__b01+b02+b03__w12__uk1",
+  "name": "all_12",
+  "created_utc": "2026-11-14T02:48:44+00:00",
+  "host": "hpcfst04",
+  "settings": {
+    "algorithm": "bayesian_optimization_ucb",
+    "buildings": [
+      "building_01",
+      "building_02",
+      "building_03"
+    ],
+    "calibration_years": [
+      2018,
+      2019
+    ],
+    "evaluation_budget": 48,
+    "parallel_workers": 12,
+    "seed": 2026,
+    "parameters": {
+      "weekday_heating_hours": 8.0,
+      "non_workday_heating_hours": 2.0,
+      "weekday_start_hour": 7.0,
+      "occupied_heating_setpoint_c": 20.0,
+      "night_setback_temperature_c": 15.0,
+      "outdoor_shutdown_temperature_c": 15.0,
+      "normally_heated_area_fraction": 0.8,
+      "reduced_area_setpoint_c": 15.0,
+      "reduced_area_schedule_fraction": 0.5,
+      "air_exchange_multiplier": 1.0,
+      "opaque_envelope_u_value_multiplier": 1.0,
+      "window_u_value_multiplier": 1.0
+    },
+    "constants": {
+      "UCB_KAPPA": 1
+    }
+  },
+  "organizer": {
+    "input_signature": "b18df09c1d13b195db4c4da484ce3fb2bb3cb6e790c108f4dd78de03b26c35e5",
+    "pybuildingenergy": "2.1.0"
+  },
+  "environment": {
+    "python": "3.11.16",
+    "packages": {
+      "numpy": "2.4.6",
+      "scipy": "1.17.1",
+      "scikit-learn": "1.9.1"
+    }
+  },
+  "code": {
+    "fingerprint": "16bad1c92f110807d2ebff7a068fb1c941c99aa4a308ec3086a6ce620def4fc6",
+    "parts": {
+      "<__future__>": {
+        "kind": "module",
+        "hash": "295df243c6a33994"
+      },
+      "ALGORITHM_NAME": {
+        "kind": "selector",
+        "hash": "fa58922299e86e55"
+      },
+      "ConstantKernel": {
+        "kind": "import",
+        "hash": "c819e3508c4b48fc"
+      },
+      "ConvergenceWarning": {
+        "kind": "import",
+        "hash": "7bc13ffcd44bc3f4"
+      },
+      "GaussianProcessRegressor": {
+        "kind": "import",
+        "hash": "105c127b64dbe86c"
+      },
+      "Matern": {
+        "kind": "import",
+        "hash": "26558752aa65b138"
+      },
+      "UCB_KAPPA": {
+        "kind": "assign",
+        "hash": "c41f32e095031adf"
+      },
+      "WhiteKernel": {
+        "kind": "import",
+        "hash": "4d4a1ebc401063e5"
+      },
+      "_ALGORITHMS": {
+        "kind": "registry",
+        "hash": "c738a513c8c40732"
+      },
+      "_History": {
+        "kind": "class",
+        "hash": "a612228c8bdbe6c4"
+      },
+      "_MAX_STALLED_BATCHES": {
+        "kind": "assign",
+        "hash": "f731f352693a1f0a"
+      },
+      "_bo_loop": {
+        "kind": "def",
+        "hash": "7aa36c27ab20cbe9"
+      },
+      "_candidate_pool": {
+        "kind": "def",
+        "hash": "9815c32b0aa301f7"
+      },
+      "_fit_gp": {
+        "kind": "def",
+        "hash": "e95edc08fa777af3"
+      },
+      "_kriging_believer": {
+        "kind": "def",
+        "hash": "ac7b3f5471250a0c"
+      },
+      "_lower_confidence_bound": {
+        "kind": "def",
+        "hash": "896e30b6242b0d63"
+      },
+      "_propose_batch": {
+        "kind": "def",
+        "hash": "5321ab16870560bb"
+      },
+      "bayesian_optimization_ucb": {
+        "kind": "def",
+        "hash": "42d8ca7bc77c4750"
+      },
+      "calibrate": {
+        "kind": "def",
+        "hash": "92594b835257e799"
+      },
+      "np": {
+        "kind": "import",
+        "hash": "6f11581db2b4487a"
+      },
+      "qmc": {
+        "kind": "import",
+        "hash": "c9362276fdd8449a"
+      },
+      "warnings": {
+        "kind": "import",
+        "hash": "e099fa46ef98e3cf"
+      }
+    },
+    "calibration_py_sha256": "aab99b9a8ef4f27760d7ef45080c7d2c3ed14c9dce91e0869b59f91f18462cdf",
+    "snapshot_sha256": "bad0a3db7265944860d1e81fc03e1f20f57c429d372840163314dec56bd37b0e",
+    "equivalent": []
+  },
+  "probe": {
+    "signatures": {
+      "smooth": "89d6db4cf190560cb9071a2b113f2bd8",
+      "corner": "4e830b4461dfb35651c1bfa1b4fa2529",
+      "degenerate": "0c6c463b1ba2e4c3f77de6a83139d9f0"
+    },
+    "executed": [
+      "_History",
+      "_bo_loop",
+      "_candidate_pool",
+      "_fit_gp",
+      "_kriging_believer",
+      "_lower_confidence_bound",
+      "_propose_batch",
+      "bayesian_optimization_ucb",
+      "calibrate"
+    ],
+    "evaluations": 104
+  },
+  "result": {
+    "overall_score": 96.71159906577311,
+    "building_scores": {
+      "building_01": 95.24306721264666,
+      "building_02": 98.54176955151863,
+      "building_03": 96.34996043315408
+    },
+    "runtime_seconds": 505.9
+  }
+}

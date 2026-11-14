@@ -1,0 +1,144 @@
+{
+  "schema_version": 2,
+  "run_id": "no_envelope_9__tpe__budget48__2018+2019__b01+b02+b03__w12",
+  "name": "no_envelope_9",
+  "created_utc": "2026-11-14T02:44:30+00:00",
+  "host": "hpcfst02",
+  "settings": {
+    "algorithm": "tpe",
+    "buildings": [
+      "building_01",
+      "building_02",
+      "building_03"
+    ],
+    "calibration_years": [
+      2018,
+      2019
+    ],
+    "evaluation_budget": 48,
+    "parallel_workers": 12,
+    "seed": 2026,
+    "parameters": {
+      "weekday_heating_hours": 8.0,
+      "non_workday_heating_hours": 2.0,
+      "weekday_start_hour": 7.0,
+      "occupied_heating_setpoint_c": 20.0,
+      "night_setback_temperature_c": 15.0,
+      "outdoor_shutdown_temperature_c": 15.0,
+      "normally_heated_area_fraction": 0.8,
+      "reduced_area_setpoint_c": 15.0,
+      "reduced_area_schedule_fraction": 0.5,
+      "air_exchange_multiplier": null,
+      "opaque_envelope_u_value_multiplier": null,
+      "window_u_value_multiplier": null
+    }
+  },
+  "organizer": {
+    "input_signature": "b18df09c1d13b195db4c4da484ce3fb2bb3cb6e790c108f4dd78de03b26c35e5",
+    "pybuildingenergy": "2.1.0"
+  },
+  "environment": {
+    "python": "3.11.16",
+    "packages": {
+      "numpy": "2.4.6",
+      "scipy": "1.17.1"
+    }
+  },
+  "code": {
+    "fingerprint": "71e685688f99ecf3e40a411a209cec56518e576011c120676cf317c5f24a0484",
+    "parts": {
+      "<__future__>": {
+        "kind": "module",
+        "hash": "295df243c6a33994"
+      },
+      "ALGORITHM_NAME": {
+        "kind": "selector",
+        "hash": "c81c3930f42046e8"
+      },
+      "_ALGORITHMS": {
+        "kind": "registry",
+        "hash": "6105e90b092bee42"
+      },
+      "_History": {
+        "kind": "class",
+        "hash": "a612228c8bdbe6c4"
+      },
+      "_MAX_STALLED_BATCHES": {
+        "kind": "assign",
+        "hash": "f731f352693a1f0a"
+      },
+      "_TPE_CANDIDATES": {
+        "kind": "assign",
+        "hash": "8e3658b9819ca586"
+      },
+      "_TPE_GOOD_FRACTION": {
+        "kind": "assign",
+        "hash": "92550701e335441e"
+      },
+      "_parzen_fit": {
+        "kind": "def",
+        "hash": "3bc7b3a8def91017"
+      },
+      "_parzen_log_pdf": {
+        "kind": "def",
+        "hash": "b29bdcdb57ec3fc0"
+      },
+      "_parzen_sample": {
+        "kind": "def",
+        "hash": "a657dd31f13aaef4"
+      },
+      "calibrate": {
+        "kind": "def",
+        "hash": "92594b835257e799"
+      },
+      "logsumexp": {
+        "kind": "import",
+        "hash": "c249a231050cdead"
+      },
+      "norm": {
+        "kind": "import",
+        "hash": "5110c24ad031dba9"
+      },
+      "np": {
+        "kind": "import",
+        "hash": "6f11581db2b4487a"
+      },
+      "qmc": {
+        "kind": "import",
+        "hash": "c9362276fdd8449a"
+      },
+      "tpe": {
+        "kind": "def",
+        "hash": "6bd1712848673fe8"
+      }
+    },
+    "calibration_py_sha256": "aab99b9a8ef4f27760d7ef45080c7d2c3ed14c9dce91e0869b59f91f18462cdf",
+    "snapshot_sha256": "eefb1379d40936984587545d754f3a12d6f8065324cb426645a3a1e8153d5d03",
+    "equivalent": []
+  },
+  "probe": {
+    "signatures": {
+      "smooth": "9ca20435a9492dfc4e468d5ac99c8a88",
+      "corner": "872aca09c74fae8f856d337fa337340b",
+      "degenerate": "4dd5d1f904e0285575bdbb0e9463aea0"
+    },
+    "executed": [
+      "_History",
+      "_parzen_fit",
+      "_parzen_log_pdf",
+      "_parzen_sample",
+      "calibrate",
+      "tpe"
+    ],
+    "evaluations": 104
+  },
+  "result": {
+    "overall_score": 93.54124324692516,
+    "building_scores": {
+      "building_01": 94.76662205477604,
+      "building_02": 95.68507994606988,
+      "building_03": 90.17202773992956
+    },
+    "runtime_seconds": 385.7
+  }
+}

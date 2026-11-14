@@ -2,8 +2,8 @@
   "schema_version": 2,
   "run_id": "all_12__bayesian_optimization__budget48__2018+2019__b01+b02+b03__w12",
   "name": "all_12",
-  "created_utc": "2026-11-13T22:40:17+00:00",
-  "host": "hpcamd01",
+  "created_utc": "2026-11-14T02:38:01+00:00",
+  "host": "hpcfst02",
   "settings": {
     "algorithm": "bayesian_optimization",
     "buildings": [
@@ -46,7 +46,7 @@
     }
   },
   "code": {
-    "fingerprint": "6ef74a1cc829a620dd5c443dfff2b628bc8fc658bb5ee07691f8844a3cb29faf",
+    "fingerprint": "038b967e19199d90a28d2809947b3b910447c911731c8a9b5bf7b2cef0ef69c3",
     "parts": {
       "<__future__>": {
         "kind": "module",
@@ -88,25 +88,33 @@
         "kind": "assign",
         "hash": "f731f352693a1f0a"
       },
+      "_bo_loop": {
+        "kind": "def",
+        "hash": "7aa36c27ab20cbe9"
+      },
       "_candidate_pool": {
         "kind": "def",
         "hash": "9815c32b0aa301f7"
       },
       "_expected_improvement": {
         "kind": "def",
-        "hash": "17033c11b8f86ff0"
+        "hash": "aef4fdb559998f2a"
       },
       "_fit_gp": {
         "kind": "def",
         "hash": "e95edc08fa777af3"
       },
+      "_kriging_believer": {
+        "kind": "def",
+        "hash": "ac7b3f5471250a0c"
+      },
       "_propose_batch": {
         "kind": "def",
-        "hash": "3a20d2d4372a50ee"
+        "hash": "5321ab16870560bb"
       },
       "bayesian_optimization": {
         "kind": "def",
-        "hash": "40f0dc470c49ebca"
+        "hash": "53a40834f3c9f1aa"
       },
       "calibrate": {
         "kind": "def",
@@ -129,21 +137,23 @@
         "hash": "e099fa46ef98e3cf"
       }
     },
-    "calibration_py_sha256": "ecd6d82ed0fecbd48baa919ec7ef1498fc1782a0f31dee22de88b854012cdcc4",
-    "snapshot_sha256": "ecd6d82ed0fecbd48baa919ec7ef1498fc1782a0f31dee22de88b854012cdcc4",
+    "calibration_py_sha256": "aab99b9a8ef4f27760d7ef45080c7d2c3ed14c9dce91e0869b59f91f18462cdf",
+    "snapshot_sha256": "aab99b9a8ef4f27760d7ef45080c7d2c3ed14c9dce91e0869b59f91f18462cdf",
     "equivalent": []
   },
   "probe": {
     "signatures": {
       "smooth": "bc898f2d726158dda6ede32df874b2b3",
-      "corner": "6e62a381e0af361de434de7c3e29a67a",
+      "corner": "82ed149fd396211b022a5874548d5b15",
       "degenerate": "09cbab95ac8d8a42f95afabff998cd0e"
     },
     "executed": [
       "_History",
+      "_bo_loop",
       "_candidate_pool",
       "_expected_improvement",
       "_fit_gp",
+      "_kriging_believer",
       "_propose_batch",
       "bayesian_optimization",
       "calibrate"
@@ -151,12 +161,12 @@
     "evaluations": 105
   },
   "result": {
-    "overall_score": 96.74874697853998,
+    "overall_score": 96.3158148034152,
     "building_scores": {
       "building_01": 95.68150409926207,
-      "building_02": 99.04339948820413,
-      "building_03": 95.52133734815375
+      "building_02": 99.04339948820417,
+      "building_03": 94.2225408227793
     },
-    "runtime_seconds": 209.3
+    "runtime_seconds": 444.0
   }
 }
