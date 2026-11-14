@@ -1,5 +1,7 @@
 # Calibra(ting) Building Energy Models - Final Presentation
 
+You can explore the live demo at [hackathon2026.mmock.net](https://hackathon2026.mmock.net/index.html).
+
 - Reduce runtime by only running every experiment once and saving the necessary scores
 ---
 
