@@ -1,0 +1,192 @@
+{
+  "schema_version": 2,
+  "run_id": "all_12__ard_bayesian_optimisation__budget48__2018+2019__b01+b02+b03__w12__aif0.25__ar0.75",
+  "name": "all_12",
+  "created_utc": "2026-11-14T11:12:03+00:00",
+  "host": "hpcfst05",
+  "settings": {
+    "algorithm": "ard_bayesian_optimisation",
+    "buildings": [
+      "building_01",
+      "building_02",
+      "building_03"
+    ],
+    "calibration_years": [
+      2018,
+      2019
+    ],
+    "evaluation_budget": 48,
+    "parallel_workers": 12,
+    "seed": 2026,
+    "parameters": {
+      "weekday_heating_hours": 8.0,
+      "non_workday_heating_hours": 2.0,
+      "weekday_start_hour": 7.0,
+      "occupied_heating_setpoint_c": 20.0,
+      "night_setback_temperature_c": 15.0,
+      "outdoor_shutdown_temperature_c": 15.0,
+      "normally_heated_area_fraction": 0.8,
+      "reduced_area_setpoint_c": 15.0,
+      "reduced_area_schedule_fraction": 0.5,
+      "air_exchange_multiplier": 1.0,
+      "opaque_envelope_u_value_multiplier": 1.0,
+      "window_u_value_multiplier": 1.0
+    },
+    "constants": {
+      "ARD_INITIAL_FRACTION": 0.25,
+      "ARD_RKN": 0.75
+    }
+  },
+  "organizer": {
+    "input_signature": "b18df09c1d13b195db4c4da484ce3fb2bb3cb6e790c108f4dd78de03b26c35e5",
+    "pybuildingenergy": "2.1.0"
+  },
+  "environment": {
+    "python": "3.11.16",
+    "packages": {
+      "numpy": "2.4.6",
+      "scipy": "1.17.1",
+      "scikit-learn": "1.9.1"
+    }
+  },
+  "code": {
+    "fingerprint": "a347ad9577b55113635444f29080cab2c9be982276f196f148b7d0d79b5b9c1b",
+    "parts": {
+      "<__future__>": {
+        "kind": "module",
+        "hash": "295df243c6a33994"
+      },
+      "ALGORITHM_NAME": {
+        "kind": "selector",
+        "hash": "c786fae700e9e98e"
+      },
+      "ARD_FOCUS_END_FRACTION": {
+        "kind": "assign",
+        "hash": "df702ebe60e5f67e"
+      },
+      "ARD_INITIAL_FRACTION": {
+        "kind": "assign",
+        "hash": "ae9fcaac98482707"
+      },
+      "ARD_RKN": {
+        "kind": "assign",
+        "hash": "b823c5eff2e10294"
+      },
+      "ARD_TOP_FRACTION": {
+        "kind": "assign",
+        "hash": "a1d2f8b1eaa3924e"
+      },
+      "ConstantKernel": {
+        "kind": "import",
+        "hash": "c819e3508c4b48fc"
+      },
+      "ConvergenceWarning": {
+        "kind": "import",
+        "hash": "7bc13ffcd44bc3f4"
+      },
+      "GaussianProcessRegressor": {
+        "kind": "import",
+        "hash": "105c127b64dbe86c"
+      },
+      "Matern": {
+        "kind": "import",
+        "hash": "26558752aa65b138"
+      },
+      "WhiteKernel": {
+        "kind": "import",
+        "hash": "4d4a1ebc401063e5"
+      },
+      "_ALGORITHMS": {
+        "kind": "registry",
+        "hash": "7adf37ec17880362"
+      },
+      "_History": {
+        "kind": "class",
+        "hash": "a612228c8bdbe6c4"
+      },
+      "_MAX_STALLED_BATCHES": {
+        "kind": "assign",
+        "hash": "f731f352693a1f0a"
+      },
+      "_ard_active_dimensions": {
+        "kind": "def",
+        "hash": "7fefd2a0dcd72edf"
+      },
+      "_candidate_pool": {
+        "kind": "def",
+        "hash": "9815c32b0aa301f7"
+      },
+      "_expected_improvement": {
+        "kind": "def",
+        "hash": "aef4fdb559998f2a"
+      },
+      "_fit_gp": {
+        "kind": "def",
+        "hash": "e95edc08fa777af3"
+      },
+      "_kriging_believer": {
+        "kind": "def",
+        "hash": "ac7b3f5471250a0c"
+      },
+      "_propose_batch": {
+        "kind": "def",
+        "hash": "da22e1d6f4946666"
+      },
+      "ard_bayesian_optimisation": {
+        "kind": "def",
+        "hash": "c4307aef12650f52"
+      },
+      "calibrate": {
+        "kind": "def",
+        "hash": "92594b835257e799"
+      },
+      "norm": {
+        "kind": "import",
+        "hash": "5110c24ad031dba9"
+      },
+      "np": {
+        "kind": "import",
+        "hash": "6f11581db2b4487a"
+      },
+      "qmc": {
+        "kind": "import",
+        "hash": "c9362276fdd8449a"
+      },
+      "warnings": {
+        "kind": "import",
+        "hash": "e099fa46ef98e3cf"
+      }
+    },
+    "calibration_py_sha256": "f57efcae844676caf8d82f1d3eb3ad26d938aada858367c5a05028a0d4931e6a",
+    "snapshot_sha256": "3ea35122b93fc905c230ebf408b686da4b17480c1bb08ad3b980ed3e2a4b242d",
+    "equivalent": []
+  },
+  "probe": {
+    "signatures": {
+      "smooth": "a53b444a37f0e733ce67c92866a97e95",
+      "corner": "6bbf8cb89e68e105b6767051ccaaff69",
+      "degenerate": "91820460822c7d565055341bcf3e08e6"
+    },
+    "executed": [
+      "_History",
+      "_ard_active_dimensions",
+      "_candidate_pool",
+      "_expected_improvement",
+      "_fit_gp",
+      "_kriging_believer",
+      "_propose_batch",
+      "ard_bayesian_optimisation",
+      "calibrate"
+    ],
+    "evaluations": 105
+  },
+  "result": {
+    "overall_score": 96.0060605072842,
+    "building_scores": {
+      "building_01": 95.37383118445186,
+      "building_02": 97.89808991228168,
+      "building_03": 94.74626042511906
+    },
+    "runtime_seconds": 442.1
+  }
+}
