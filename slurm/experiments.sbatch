@@ -3,8 +3,13 @@
 #
 #   mkdir -p outputs/slurm                      # Slurm does not create the log folder
 #   python experiments.py status                # lists the experiment indices and the --array range
-#   sbatch --array=0-5 slurm/experiments.sbatch
+#   sbatch slurm/experiments.sbatch             # all 14 experiments of experiments.json
+#   sbatch --array=1-2,7-8 slurm/experiments.sbatch   # only some indices
 #   SETTINGS=my_settings.json sbatch --array=0-3 slurm/experiments.sbatch
+#
+# The default --array below matches experiments.json (indices 0-13). Update it
+# when experiments are added or removed, or pass --array on the command line,
+# which overrides it.
 #
 # Experiments with a valid saved result are skipped, so resubmitting the whole
 # array after a failure or a code change only reruns what is needed.
@@ -14,6 +19,7 @@
 # than the job was given. Adjust memory, time, and partition for your cluster.
 
 #SBATCH --job-name=calibra
+#SBATCH --array=0-13
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=16G
 #SBATCH --time=04:00:00

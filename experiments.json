@@ -10,12 +10,12 @@
   "experiments": [
     {
       "name": "all_12",
-      "algorithm": "bayesian_optimization",
+      "algorithm": ["bayesian_optimization", "bayesian_optimization_cl", "bayesian_optimization_mes", "tpe", "cma_es", "hyperband"],
       "parameters": "all"
     },
     {
       "name": "no_envelope_9",
-      "algorithm": "bayesian_optimization",
+      "algorithm": ["bayesian_optimization", "bayesian_optimization_cl", "bayesian_optimization_mes", "tpe", "cma_es", "hyperband"],
       "parameters": [
         "weekday_heating_hours",
         "non_workday_heating_hours",
