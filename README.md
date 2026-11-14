@@ -1,3 +1,35 @@
+# Calibra(ting) Building Energy Models - 10AM Presentation
+
+## The Background (30 s)
+
+- What are Building Energy Models?
+- What is the purpose of calibrating them? 
+
+## The Data (30 s)
+
+- Describe and shortly show what data we have about the buildings
+
+## The Problem (1 min)
+
+- Can be treated as Hyperparameter Optimization problem but not allowed to use existing libraries
+- Hyperparameters have a physical meaning
+- Reverse Engineering problem: model is fixed and assumed perfect, find the inputs to match the model outputs to the measured data --> mathematical formulation
+- Challenge: use optimization algorithms to minimize error between actual and simulated energy use
+- Limited budget
+
+
+## Calibra's Solution(s) (1 min)
+
+- Search Algorithms:
+    - Grid search is not feasible with a budget of 48 parameter sets to try
+    - Random Search already outperforms the baseline
+- (Surrogate)-Model-Based Algorithms:
+    - Bayesian Optimization
+- Resource-Aware and Evolutionary Algorithms:
+    - Probably too expensive
+
+---
+
 # INTEGRATES Building-Energy Calibration Hackathon
 
 This repository contains the participant workflow for a building-energy
