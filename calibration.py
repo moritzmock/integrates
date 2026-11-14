@@ -8,10 +8,13 @@ parameters, so submissions must return only the best parameter dictionary.
 
 - ``random_search``: uniform sampling.
 - ``bayesian_optimization`` (and ``_cl``, ``_mes``): Gaussian-process surrogate.
+- ``simple_bayesian_optimization``: baseline with a fixed, unfitted GP.
 - ``bayesian_optimization_screened``: screening design first, then Bayesian
   optimization focused on the parameters that matter for the building.
 - ``ard_bayesian_optimisation``: Bayesian optimization that, mid-run, varies
   only the parameters with the shortest fitted GP length scales.
+- ``caliblab``: the CalibLab pipeline (https://github.com/TUB-DVG/CalibLab):
+  sensitivity analysis, GP metamodel, Bayesian calibration by MCMC.
 - ``tpe``: Tree-structured Parzen Estimator.
 - ``cma_es``: Covariance Matrix Adaptation Evolution Strategy.
 - ``hyperband``: Hyperband over local-search arms (see its docstring: the
@@ -33,6 +36,7 @@ from scipy.stats import norm, qmc
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import ConstantKernel, Matern, WhiteKernel
+from sklearn.gaussian_process.kernels import RBF, ExpSineSquared, RationalQuadratic  # caliblab
 
 
 TEAM_NAME = "Calibra"
@@ -351,6 +355,74 @@ def _evaluate(history: _History, units: np.ndarray) -> np.ndarray:
     before = len(history.y)
     history.evaluate(units)
     return np.array(history.y[before:])
+
+
+# --------------------------------------------------------------------------
+# Simple Bayesian optimization (baseline for the model-based methods)
+# --------------------------------------------------------------------------
+
+SIMPLE_BO_INITIAL_POINTS = 5  # random points before the model is used (at least one batch)
+SIMPLE_BO_CANDIDATES = 500  # random candidates scored per round
+SIMPLE_BO_LENGTH_SCALE = 1.0  # fixed kernel length scale, in unit-cube distance
+SIMPLE_BO_NOISE = 1e-4  # noise variance added to the kernel matrix
+
+
+def simple_bayesian_optimization(
+    history: _History, start: np.ndarray, rng: np.random.Generator
+) -> None:
+    """Bayesian optimization with a fixed Gaussian process: nothing is fitted.
+
+    A baseline that shows what the more elaborate methods add. Compared with
+    ``bayesian_optimization`` it has
+
+    - a squared-exponential kernel with one fixed length scale for all
+      parameters and unit variance, instead of fitted hyperparameters;
+    - uniform random initial points and candidates, instead of a Latin
+      hypercube and local perturbations around the best points.
+
+    Shared with it: the start vector is evaluated first, the target is
+    log(1 + WAPE) (here standardized, because the kernel variance is fixed at
+    one), the acquisition is Expected Improvement, and the batch is filled
+    with the kriging believer.
+    """
+
+    dim = len(start)
+    n_init = max(SIMPLE_BO_INITIAL_POINTS, history.objective.max_batch_size)
+    n_init = max(1, min(n_init, history.remaining() // 2))
+    history.evaluate(np.vstack([history.to_unit(start), rng.uniform(size=(n_init - 1, dim))]))
+
+    while history.can_continue():
+        X = np.array(history.X)
+        y = np.log1p(np.maximum(np.array(history.y), 0.0))
+        y = (y - y.mean()) / max(float(y.std()), 1e-9)
+        pool = rng.uniform(size=(SIMPLE_BO_CANDIDATES, dim))
+        batch = []
+        for _ in range(history.next_batch_size()):
+            mean, std = _simple_gp_predict(X, y, pool)
+            z = (y.min() - mean) / std
+            choice = int(np.argmax(std * (z * norm.cdf(z) + norm.pdf(z))))  # Expected Improvement
+            batch.append(pool[choice])
+            # Kriging believer: the prediction stands in for the missing result.
+            X = np.vstack([X, pool[choice]])
+            y = np.append(y, mean[choice])
+        history.evaluate(np.array(batch))
+
+
+def _simple_gp_predict(
+    X: np.ndarray, y: np.ndarray, candidates: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Posterior mean and standard deviation of a zero-mean, unit-variance GP."""
+
+    def kernel(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+        squared_distance = np.sum((a[:, None, :] - b[None, :, :]) ** 2, axis=2)
+        return np.exp(-0.5 * squared_distance / SIMPLE_BO_LENGTH_SCALE**2)
+
+    L = np.linalg.cholesky(kernel(X, X) + SIMPLE_BO_NOISE * np.eye(len(X)))
+    K_star = kernel(candidates, X)
+    mean = K_star @ np.linalg.solve(L.T, np.linalg.solve(L, y))
+    v = np.linalg.solve(L, K_star.T)
+    variance = np.maximum(1.0 - np.sum(v**2, axis=0), 1e-6)
+    return mean, np.sqrt(variance)
 
 
 # --------------------------------------------------------------------------
@@ -849,6 +921,262 @@ def _ard_active_dimensions(gp) -> np.ndarray:
 
 
 # --------------------------------------------------------------------------
+# CalibLab: sensitivity analysis, GP metamodel, Bayesian calibration (MCMC)
+# --------------------------------------------------------------------------
+#
+# Re-implementation of the approach of CalibLab (TU Berlin, MIT license):
+#   https://github.com/TUB-DVG/CalibLab
+#   Fülep, K., Kalathiparambil Kennedy, M. L., Brandt, S., & Streblow, R. (2024).
+#   An Open-Source Framework: Bayesian Building Energy Model Calibration with
+#   Uncertainty Quantification. uSIM2024, Edinburgh.
+#   Fülep, K., Chen, S., Brandt, S., & Streblow, R. (2024). Advancing Building
+#   Energy Modeling: An Open-Source Bayesian Calibration Framework for
+#   Non-Residential Buildings. SimBuild 2024, Denver.
+# No CalibLab code is copied; SALib and PyMC3, which it uses, are replaced by
+# the NumPy/SciPy code below.
+
+CALIBLAB_NUM_PARAMETERS = 5  # parameters kept after the sensitivity analysis (CalibLab: num_bc_param)
+CALIBLAB_SENSITIVITY_FRACTION = 0.35  # at most this share of the budget goes to the sensitivity runs
+CALIBLAB_GP_FRACTION = 0.25  # share of the budget for the metamodel's Latin hypercube runs
+CALIBLAB_GP_TEST_SIZE = 0.25  # share of the metamodel runs held out to pick the kernel (gp_test_size)
+CALIBLAB_SOBOL_LOG2_SAMPLES = 8  # the Sobol indices use 2**this base samples
+CALIBLAB_ERROR_SCALE = 0.1  # prior mean of the observation error, as a share of the mean output
+CALIBLAB_CHAINS = 4  # MCMC chains
+CALIBLAB_DRAWS = 250  # kept MCMC steps per chain
+CALIBLAB_TUNE = 500  # discarded MCMC steps per chain, during which the step size adapts
+CALIBLAB_RHAT_THRESHOLD = 1.1  # sample again (twice the draws) while any R-hat is above this
+CALIBLAB_MAX_RESAMPLES = 2  # ... but at most this many times
+
+
+def caliblab(history: _History, start: np.ndarray, rng: np.random.Generator) -> None:
+    """The CalibLab pipeline (see the citation above), adapted to this challenge.
+
+    CalibLab calibrates in three steps, each kept here:
+
+    1. Sensitivity analysis: Sobol total-order indices rank the parameters and
+       the CALIBLAB_NUM_PARAMETERS most influential ones are calibrated.
+    2. Metamodel: the simulator is run on a Latin hypercube over those
+       parameters (the others stay fixed) and a Gaussian process is trained on
+       the runs. Three kernels are tried and the one with the lowest RMSE on
+       held-out runs is used.
+    3. Bayesian calibration: MCMC samples the posterior of the parameters,
+       with the metamodel in place of the simulator, a model-discrepancy term
+       N(0, sigma_gp), an Exponential prior on the observation error, and
+       sampling repeated with twice the draws until R-hat is small enough.
+
+    What had to change, and why:
+
+    - CalibLab runs thousands of simulations for the Sobol indices. With a
+      budget of a few dozen, the indices are computed on a GP fitted to the
+      start vector plus a Latin hypercube over all parameters.
+    - The objective returns only the WAPE, not the simulated series, so the
+      metamodel predicts log(1 + WAPE) and the "observation" is a perfect
+      fit, i.e. 0. The priors are uniform over the organizer bounds.
+    - The fixed parameters are pinned to the best point of step 1.
+    - CalibLab ends with the posterior; the challenge needs one evaluated
+      parameter set. The remaining budget is therefore spent in rounds:
+      simulate a batch of posterior draws, add them to the metamodel's
+      training runs, and repeat steps 2 (training) and 3.
+    - The sampler is random-walk Metropolis instead of PyMC3's NUTS.
+    """
+
+    dim = len(start)
+    n_init = max(dim + 1, history.objective.max_batch_size)
+    n_init = max(1, min(n_init, int(history.remaining() * CALIBLAB_SENSITIVITY_FRACTION)))
+    design = qmc.LatinHypercube(d=dim, seed=rng)
+    history.evaluate(np.vstack([history.to_unit(start), design.random(max(0, n_init - 1))]))
+    if not history.can_continue():
+        return
+
+    # 1. Sensitivity analysis on a metamodel of all parameters.
+    X = np.array(history.X)
+    y = np.log1p(np.maximum(np.array(history.y), 0.0))
+    total_effects = _sobol_total_indices(_fit_gp(X, y, rng), dim, rng)
+    selected = np.sort(np.argsort(-total_effects, kind="stable")[:CALIBLAB_NUM_PARAMETERS])
+    print(f"caliblab: calibrating parameters {selected.tolist()} of {dim}")
+
+    base = X[int(np.argmin(y))]  # the fixed parameters keep these values
+
+    def embed(points: np.ndarray) -> np.ndarray:
+        full = np.tile(base, (len(points), 1))
+        full[:, selected] = points
+        return full
+
+    # 2. Metamodel runs: a Latin hypercube over the selected parameters.
+    count = max(1, min(int(history.budget * CALIBLAB_GP_FRACTION), history.next_batch_size()))
+    samples = qmc.LatinHypercube(d=len(selected), seed=rng).random(count)
+    losses = _evaluate(history, embed(samples))
+    Z = np.vstack([base[selected], samples[: len(losses)]])
+    z_losses = np.concatenate([[float(np.min(history.y[: len(X)]))], losses])
+
+    # 2. (training) and 3., repeated while budget is left.
+    while history.can_continue():
+        target = np.log1p(np.maximum(z_losses, 0.0))
+        gp, sigma_gp = _caliblab_metamodel(Z, target, rng)
+        draws = _caliblab_posterior(gp, sigma_gp, Z, target, rng)
+        batch = _caliblab_candidates(gp, draws, Z, history.next_batch_size(), rng)
+        losses = _evaluate(history, embed(batch))
+        Z = np.vstack([Z, batch[: len(losses)]])
+        z_losses = np.concatenate([z_losses, losses])
+
+
+def _sobol_total_indices(gp, dim: int, rng: np.random.Generator) -> np.ndarray:
+    """Sobol total-order index of every parameter for the GP mean (Jansen's estimator)."""
+
+    points = qmc.Sobol(d=2 * dim, seed=rng).random_base2(CALIBLAB_SOBOL_LOG2_SAMPLES)
+    A, B = points[:, :dim], points[:, dim:]
+    f_A = gp.predict(A)
+    variance = max(float(np.var(np.concatenate([f_A, gp.predict(B)]))), 1e-12)
+    indices = np.empty(dim)
+    for i in range(dim):
+        AB = A.copy()
+        AB[:, i] = B[:, i]  # only parameter i differs from A
+        indices[i] = 0.5 * np.mean((f_A - gp.predict(AB)) ** 2) / variance
+    return indices
+
+
+def _caliblab_metamodel(Z: np.ndarray, target: np.ndarray, rng: np.random.Generator):
+    """Train the GP metamodel; return it with sigma_gp, its mean held-out std.
+
+    The kernels are CalibLab's three candidates. Each is trained on the
+    training split and scored by its RMSE on the held-out split; the winner is
+    then trained again on all runs.
+    """
+
+    def kernels():
+        scale = (1e-3, 1e3)
+        return [
+            ConstantKernel(1.0, scale) * RationalQuadratic(1.0, 1.0, (1e-5, 1e5), (1e-5, 1e5)),
+            ConstantKernel(1.0, scale) * RBF(1.0, (1e-5, 1e5))
+            + ConstantKernel(1.0, scale) * ExpSineSquared(1.0, 1.0, (1e-5, 1e5), (1e-5, 1e5)),
+            ConstantKernel(1.0, scale) * RBF(1.0, (1e-5, 1e5)),
+        ]
+
+    def fit(kernel, rows):
+        gp = GaussianProcessRegressor(
+            kernel=kernel,
+            alpha=1e-6,
+            normalize_y=True,
+            n_restarts_optimizer=max(1, int(0.1 * len(rows))),
+            random_state=int(rng.integers(2**31 - 1)),
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            gp.fit(Z[rows], target[rows])
+        return gp
+
+    order = rng.permutation(len(Z))
+    n_test = max(1, int(round(CALIBLAB_GP_TEST_SIZE * len(Z))))
+    test, train = order[:n_test], order[n_test:]
+    if len(train) < 2:  # too few runs to hold any out
+        test = train = order
+
+    best = None  # (rmse, kernel index, sigma_gp)
+    for index, kernel in enumerate(kernels()):
+        try:
+            mean, std = fit(kernel, train).predict(Z[test], return_std=True)
+        except (np.linalg.LinAlgError, ValueError):
+            continue
+        rmse = float(np.sqrt(np.mean((mean - target[test]) ** 2)))
+        if np.isfinite(rmse) and (best is None or rmse < best[0]):
+            best = (rmse, index, float(np.mean(std)))
+    if best is None:
+        best = (np.inf, 2, float(np.std(target)))  # plain RBF
+    return fit(kernels()[best[1]], order), max(best[2], 1e-6)
+
+
+def _caliblab_posterior(
+    gp, sigma_gp: float, Z: np.ndarray, target: np.ndarray, rng: np.random.Generator
+) -> np.ndarray:
+    """Posterior draws of the calibrated parameters, shape (draws, parameters).
+
+    Model, as in CalibLab: uniform priors on the parameters, observation
+    error ~ Exponential with mean CALIBLAB_ERROR_SCALE * mean output, and the
+    observation (here a perfect fit, 0) ~ Normal(metamodel + discrepancy,
+    error) with discrepancy ~ Normal(0, sigma_gp); the discrepancy is
+    integrated out. Random-walk Metropolis over the parameters and log(error).
+    """
+
+    chains, parameters = CALIBLAB_CHAINS, Z.shape[1]
+    rate = 1.0 / (CALIBLAB_ERROR_SCALE * max(float(np.mean(target)), 1e-9))
+
+    def log_posterior(theta: np.ndarray, log_error: np.ndarray) -> np.ndarray:
+        inside = np.all((theta >= 0.0) & (theta <= 1.0), axis=1)
+        mean = gp.predict(np.clip(theta, 0.0, 1.0))
+        variance = sigma_gp**2 + np.exp(2.0 * log_error)
+        value = -0.5 * mean**2 / variance - 0.5 * np.log(variance)  # likelihood of 0
+        value += log_error - rate * np.exp(log_error)  # Exponential prior, in log(error)
+        return np.where(inside, value, -np.inf)
+
+    # The chains start at the best runs so far.
+    theta = Z[np.resize(np.argsort(target, kind="stable"), chains)].copy()
+    log_error = np.full(chains, -np.log(rate))
+    current = log_posterior(theta, log_error)
+    step = np.full(chains, 0.1)
+
+    def sample(steps: int, adapt: bool) -> np.ndarray:
+        nonlocal theta, log_error, current, step
+        trace = np.empty((steps, chains, parameters + 1))
+        for i in range(steps):
+            new_theta = theta + step[:, None] * rng.standard_normal((chains, parameters))
+            new_log_error = log_error + 2.0 * step * rng.standard_normal(chains)
+            proposed = log_posterior(new_theta, new_log_error)
+            accept = np.log(rng.uniform(size=chains)) < proposed - current
+            theta = np.where(accept[:, None], new_theta, theta)
+            log_error = np.where(accept, new_log_error, log_error)
+            current = np.where(accept, proposed, current)
+            if adapt:  # settles at about 24 % accepted steps
+                step = np.clip(step * np.where(accept, 1.1, 0.97), 1e-4, 1.0)
+            trace[i, :, :parameters], trace[i, :, parameters] = theta, log_error
+        return trace
+
+    draws, tune = CALIBLAB_DRAWS, CALIBLAB_TUNE
+    for attempt in range(CALIBLAB_MAX_RESAMPLES + 1):
+        sample(tune, adapt=True)
+        trace = sample(draws, adapt=False)
+        r_hat = _r_hat(trace)
+        if np.all(r_hat <= CALIBLAB_RHAT_THRESHOLD):
+            break
+        draws, tune = 2 * draws, 4 * draws  # CalibLab: twice the draws, tune = twice the new draws
+    print(f"caliblab: {len(trace)} draws x {chains} chains, largest R-hat {float(np.max(r_hat)):.2f}")
+    return trace[:, :, :parameters].reshape(-1, parameters)
+
+
+def _r_hat(trace: np.ndarray) -> np.ndarray:
+    """Gelman-Rubin R-hat per variable for a trace of shape (steps, chains, variables)."""
+
+    steps = len(trace)
+    within = trace.var(axis=0, ddof=1).mean(axis=0)
+    between = trace.mean(axis=0).var(axis=0, ddof=1)
+    ratio = between / np.maximum(within, 1e-12)
+    return np.minimum(np.sqrt((steps - 1) / steps + ratio), 99.0)  # capped: stuck chains
+
+
+def _caliblab_candidates(
+    gp, draws: np.ndarray, Z: np.ndarray, size: int, rng: np.random.Generator
+) -> np.ndarray:
+    """Posterior draws to simulate next: the best predicted one, then random ones.
+
+    Draws closer than 0.001 (in any unit range) to a run or to an earlier
+    choice are skipped; uniform points fill the batch if too few are left.
+    """
+
+    draws = np.unique(draws, axis=0)
+    rest = rng.permutation(len(draws))
+    first = int(np.argmin(gp.predict(draws)))
+    taken = Z
+    batch = []
+    for index in [first, *rest[rest != first]]:
+        if len(batch) == size:
+            break
+        if np.min(np.max(np.abs(taken - draws[index]), axis=1)) > 1e-3:
+            batch.append(draws[index])
+            taken = np.vstack([taken, draws[index]])
+    fill = rng.uniform(size=(size - len(batch), Z.shape[1]))
+    return np.vstack([*batch, fill]) if batch else fill
+
+
+# --------------------------------------------------------------------------
 # Bayesian optimization with a runtime parameter screening
 # --------------------------------------------------------------------------
 
@@ -968,11 +1296,13 @@ _ALGORITHMS = {
     "bayesian_optimization_cl": bayesian_optimization_cl,
     "bayesian_optimization_mes": bayesian_optimization_mes,
     "bayesian_optimization_ucb": bayesian_optimization_ucb,
+    "simple_bayesian_optimization": simple_bayesian_optimization,
     "tpe": tpe,
     "cma_es": cma_es,
     "hyperband": hyperband,
     "lasso_bayesian_optimisation": lasso_bayesian_optimisation,
     "ard_bayesian_optimisation": ard_bayesian_optimisation,
+    "caliblab": caliblab,
     "bayesian_optimization_screened": bayesian_optimization_screened,
 }
 

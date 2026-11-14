@@ -27,7 +27,9 @@
         "hyperband",
         "lasso_bayesian_optimisation",
         "ard_bayesian_optimisation",
-        "bayesian_optimization_screened"
+        "caliblab",
+        "bayesian_optimization_screened",
+        "simple_bayesian_optimization"
       ],
       "parameters": "all"
     },
@@ -42,7 +44,9 @@
         "cma_es",
         "hyperband",
         "lasso_bayesian_optimisation",
-        "ard_bayesian_optimisation"
+        "ard_bayesian_optimisation",
+        "caliblab",
+        "simple_bayesian_optimization"
       ],
       "parameters": [
         "weekday_heating_hours",
@@ -178,6 +182,48 @@
       "constants": {
         "ARD_RKN": [
           1
+        ]
+      }
+    },
+    {
+      "name": "all_12",
+      "algorithm": "caliblab",
+      "parameters": "all",
+      "constants": {
+        "CALIBLAB_NUM_PARAMETERS": [
+          3,
+          8
+        ]
+      }
+    },
+    {
+      "name": "all_12",
+      "algorithm": "caliblab",
+      "parameters": "all",
+      "constants": {
+        "CALIBLAB_ERROR_SCALE": [
+          0.01,
+          0.03
+        ]
+      }
+    },
+    {
+      "name": "all_12",
+      "algorithm": "caliblab",
+      "parameters": "all",
+      "constants": {
+        "CALIBLAB_SENSITIVITY_FRACTION": [
+          0.2
+        ]
+      }
+    },
+    {
+      "name": "all_12",
+      "algorithm": "caliblab",
+      "parameters": "all",
+      "constants": {
+        "CALIBLAB_GP_FRACTION": [
+          0.125
         ]
       }
     }
