@@ -38,8 +38,8 @@ export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=credential.helper GIT_CONFIG_VALUE_0=
 git -C "$source_root" archive --format=tar --output="$sync_work_dir/source.tar" "$source_commit"
 git clone --quiet --depth=1 --single-branch --branch "$target_branch" "$target_url" "$sync_work_dir/target"
 target_root="$sync_work_dir/target"
-git -C "$target_root" config user.name 'Hackathon sync'
-git -C "$target_root" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+git -C "$target_root" config user.name 'moritz-mock'
+git -C "$target_root" config user.email 'momock@unibz.it'
 
 for attempt in 1 2 3 4 5; do
   # Both source repositories push here. Rebuild on the newest remote commit

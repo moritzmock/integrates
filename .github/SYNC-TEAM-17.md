@@ -26,6 +26,7 @@ the remote HTTPS repository directly.
 
 ## Sync behavior
 
+- Sync commits use moritz-mock <momock@unibz.it> as both author and committer.
 - Only committed source files are copied; `.git` and untracked files are excluded.
 - Source deletions are applied inside this project's folder.
 - The other project and the root README/license are preserved.
