@@ -160,8 +160,11 @@
       "parameters": "all",
       "constants": {
         "ARD_FOCUS_END_FRACTION": [
+          1,
+          0.75,
           0.5,
-          0.75
+          0.25,
+          0
         ]
       }
     },
@@ -171,7 +174,12 @@
       "parameters": "all",
       "constants": {
         "ARD_INITIAL_FRACTION": [
-          0.2
+          1,
+          0.75,
+          0.5,
+          0.25,
+          0.2,
+          0
         ]
       }
     },
@@ -182,9 +190,10 @@
       "constants": {
         "ARD_RKN": [
           1,
-	  0.5,
-	  0.25,
-	  0
+          0.75,
+          0.5,
+          0.25,
+          0
         ]
       }
     },
@@ -227,6 +236,72 @@
       "constants": {
         "CALIBLAB_GP_FRACTION": [
           0.125
+        ]
+      }
+    },
+    {
+      "name": "all_12",
+      "algorithm": "caliblab",
+      "parameters": "all",
+      "seed": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "name": "all_12",
+      "algorithm": "caliblab",
+      "parameters": "all",
+      "seed": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "constants": {
+        "CALIBLAB_NUM_PARAMETERS": [
+          8
+        ]
+      }
+    },
+    {
+      "name": "all_12",
+      "algorithm": "caliblab",
+      "parameters": "all",
+      "seed": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "constants": {
+        "CALIBLAB_ERROR_SCALE": [
+          0.01
+        ]
+      }
+    },
+    {
+      "name": "all_12",
+      "algorithm": "caliblab",
+      "parameters": "all",
+      "seed": [
+        2026,
+        1,
+        2
+      ],
+      "constants": {
+        "CALIBLAB_NUM_PARAMETERS": [
+          6,
+          8,
+          10,
+          12
+        ],
+        "CALIBLAB_ERROR_SCALE": [
+          0.003,
+          0.01,
+          0.03
         ]
       }
     }
